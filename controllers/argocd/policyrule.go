@@ -344,19 +344,19 @@ func getPolicyRuleList(client client.Client) []struct {
 }
 
 func getPolicyRuleClusterRoleList() []struct {
-	name       string
-	policyRule []v1.PolicyRule
+	componentName string
+	policyRule    []v1.PolicyRule
 } {
 	return []struct {
-		name       string
-		policyRule []v1.PolicyRule
+		componentName string
+		policyRule    []v1.PolicyRule
 	}{
 		{
-			name:       common.ArgoCDApplicationControllerComponent,
-			policyRule: policyRuleForApplicationController(),
+			componentName: common.ArgoCDApplicationControllerComponent,
+			policyRule:    policyRuleForApplicationController(),
 		}, {
-			name:       common.ArgoCDServerComponent,
-			policyRule: policyRuleForServerClusterRole(),
+			componentName: common.ArgoCDServerComponent,
+			policyRule:    policyRuleForServerClusterRole(),
 		},
 	}
 }

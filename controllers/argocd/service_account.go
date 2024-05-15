@@ -69,7 +69,7 @@ func (r *ReconcileArgoCD) reconcileServiceAccounts(cr *argoproj.ArgoCD) error {
 	clusterParams := getPolicyRuleClusterRoleList()
 
 	for _, clusterParam := range clusterParams {
-		if err := r.reconcileServiceAccountClusterPermissions(clusterParam.name, clusterParam.policyRule, cr); err != nil {
+		if err := r.reconcileServiceAccountClusterPermissions(clusterParam.componentName, clusterParam.policyRule, cr); err != nil {
 			return err
 		}
 	}

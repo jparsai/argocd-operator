@@ -33,7 +33,7 @@ import (
 	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 )
 
-func getRedisHAReplicas(cr *argoproj.ArgoCD) *int32 {
+func getRedisHAReplicas() *int32 {
 	replicas := common.ArgoCDDefaultRedisHAReplicas
 	// TODO: Allow override of this value through CR?
 	return &replicas
@@ -95,7 +95,7 @@ func (r *ReconcileArgoCD) reconcileRedisStatefulSet(cr *argoproj.ArgoCD) error {
 	ss := newStatefulSetWithSuffix("redis-ha-server", "redis", cr)
 
 	ss.Spec.PodManagementPolicy = appsv1.OrderedReadyPodManagement
-	ss.Spec.Replicas = getRedisHAReplicas(cr)
+	ss.Spec.Replicas = getRedisHAReplicas()
 	ss.Spec.Selector = &metav1.LabelSelector{
 		MatchLabels: map[string]string{
 			common.ArgoCDKeyName: nameWithSuffix("redis-ha", cr),
