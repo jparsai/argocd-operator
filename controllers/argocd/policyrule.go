@@ -344,46 +344,46 @@ func policyRuleForServerClusterRole() []v1.PolicyRule {
 }
 
 func getPolicyRuleList(client client.Client) []struct {
-	name       string
-	policyRule []v1.PolicyRule
+	componentName string
+	policyRule    []v1.PolicyRule
 } {
 	return []struct {
-		name       string
-		policyRule []v1.PolicyRule
+		componentName string
+		policyRule    []v1.PolicyRule
 	}{
 		{
-			name:       common.ArgoCDApplicationControllerComponent,
-			policyRule: policyRuleForApplicationController(),
+			componentName: common.ArgoCDApplicationControllerComponent,
+			policyRule:    policyRuleForApplicationController(),
 		}, {
-			name:       common.ArgoCDDexServerComponent,
-			policyRule: policyRuleForDexServer(),
+			componentName: common.ArgoCDDexServerComponent,
+			policyRule:    policyRuleForDexServer(),
 		}, {
-			name:       common.ArgoCDServerComponent,
-			policyRule: policyRuleForServer(),
+			componentName: common.ArgoCDServerComponent,
+			policyRule:    policyRuleForServer(),
 		}, {
-			name:       common.ArgoCDRedisHAComponent,
-			policyRule: policyRuleForRedisHa(client),
+			componentName: common.ArgoCDRedisHAComponent,
+			policyRule:    policyRuleForRedisHa(client),
 		}, {
-			name:       common.ArgoCDRedisComponent,
-			policyRule: policyRuleForRedis(client),
+			componentName: common.ArgoCDRedisComponent,
+			policyRule:    policyRuleForRedis(client),
 		},
 	}
 }
 
 func getPolicyRuleClusterRoleList() []struct {
-	name       string
-	policyRule []v1.PolicyRule
+	componentName string
+	policyRule    []v1.PolicyRule
 } {
 	return []struct {
-		name       string
-		policyRule []v1.PolicyRule
+		componentName string
+		policyRule    []v1.PolicyRule
 	}{
 		{
-			name:       common.ArgoCDApplicationControllerComponent,
-			policyRule: policyRuleForApplicationController(),
+			componentName: common.ArgoCDApplicationControllerComponent,
+			policyRule:    policyRuleForApplicationController(),
 		}, {
-			name:       common.ArgoCDServerComponent,
-			policyRule: policyRuleForServerClusterRole(),
+			componentName: common.ArgoCDServerComponent,
+			policyRule:    policyRuleForServerClusterRole(),
 		},
 	}
 }

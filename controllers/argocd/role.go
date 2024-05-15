@@ -65,17 +65,15 @@ func newClusterRole(name string, rules []v1.PolicyRule, cr *argoproj.ArgoCD) *v1
 // reconcileRoles will ensure that all ArgoCD Service Accounts are configured.
 func (r *ReconcileArgoCD) reconcileRoles(cr *argoproj.ArgoCD) error {
 	params := getPolicyRuleList(r.Client)
-
 	for _, param := range params {
-		if _, err := r.reconcileRole(param.name, param.policyRule, cr); err != nil {
+		if _, err := r.reconcileRole(param.componentName, param.policyRule, cr); err != nil {
 			return err
 		}
 	}
 
 	clusterParams := getPolicyRuleClusterRoleList()
-
 	for _, clusterParam := range clusterParams {
-		if _, err := r.reconcileClusterRole(clusterParam.name, clusterParam.policyRule, cr); err != nil {
+		if _, err := r.reconcileClusterRole(clusterParam.componentName, clusterParam.policyRule, cr); err != nil {
 			return err
 		}
 	}
@@ -98,7 +96,7 @@ func (r *ReconcileArgoCD) reconcileRoles(cr *argoproj.ArgoCD) error {
 
 // reconcileRole, reconciles the policy rules for different ArgoCD components, for each namespace
 // Managed by a single instance of ArgoCD.
-func (r *ReconcileArgoCD) reconcileRole(name string, policyRules []v1.PolicyRule, cr *argoproj.ArgoCD) ([]*v1.Role, error) {
+func (r *ReconcileArgoCD) reconcileRole(componentName string, policyRules []v1.PolicyRule, cr *argoproj.ArgoCD) ([]*v1.Role, error) {
 	var roles []*v1.Role
 
 	// create policy rules for each namespace
@@ -121,13 +119,13 @@ func (r *ReconcileArgoCD) reconcileRole(name string, policyRules []v1.PolicyRule
 		}
 		// only skip creation of dex and redisHa roles for namespaces that no argocd instance is deployed in
 		if len(list.Items) < 1 {
-			// namespace doesn't contain argocd instance, so skipe all the ArgoCD internal roles
-			if cr.ObjectMeta.Namespace != namespace.Name && (name != common.ArgoCDApplicationControllerComponent && name != common.ArgoCDServerComponent) {
+			// namespace doesn't contain argocd instance, so skip all the ArgoCD internal roles
+			if cr.ObjectMeta.Namespace != namespace.Name && (componentName != common.ArgoCDApplicationControllerComponent && componentName != common.ArgoCDServerComponent) {
 				continue
 			}
 		}
-		customRole := getCustomRoleName(name)
-		role := newRole(name, policyRules, cr)
+		customRole := getCustomRoleName(componentName, cr)
+		role := newRole(componentName, policyRules, cr)
 		if err := applyReconcilerHook(cr, role, ""); err != nil {
 			return nil, err
 		}
@@ -136,14 +134,14 @@ func (r *ReconcileArgoCD) reconcileRole(name string, policyRules []v1.PolicyRule
 		err = r.Client.Get(context.TODO(), types.NamespacedName{Name: role.Name, Namespace: role.Namespace}, &existingRole)
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				return nil, fmt.Errorf("failed to reconcile the role for the service account associated with %s : %s", name, err)
+				return nil, fmt.Errorf("failed to reconcile the role for the service account associated with %s : %s", componentName, err)
 			}
 			if customRole != "" {
 				continue // skip creating default role if custom cluster role is provided
 			}
 			roles = append(roles, role)
 
-			if name == common.ArgoCDDexServerComponent && !UseDex(cr) {
+			if componentName == common.ArgoCDDexServerComponent && !UseDex(cr) {
 
 				continue // Dex installation not requested, do nothing
 			}
@@ -165,7 +163,7 @@ func (r *ReconcileArgoCD) reconcileRole(name string, policyRules []v1.PolicyRule
 		// Delete the existing default role if custom role is specified
 		// or if there is an existing Role created for Dex but dex is disabled or not configured
 		if customRole != "" ||
-			(name == common.ArgoCDDexServerComponent && !UseDex(cr)) {
+			(componentName == common.ArgoCDDexServerComponent && !UseDex(cr)) {
 
 			log.Info("deleting the existing Dex role because dex is not configured")
 			if err := r.Client.Delete(context.TODO(), &existingRole); err != nil {
@@ -279,41 +277,72 @@ func (r *ReconcileArgoCD) reconcileRoleForApplicationSourceNamespaces(name strin
 	return nil
 }
 
-func (r *ReconcileArgoCD) reconcileClusterRole(name string, policyRules []v1.PolicyRule, cr *argoproj.ArgoCD) (*v1.ClusterRole, error) {
+func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules []v1.PolicyRule, cr *argoproj.ArgoCD) (*v1.ClusterRole, error) {
 	allowed := false
 	if allowedNamespace(cr.Namespace, os.Getenv("ARGOCD_CLUSTER_CONFIG_NAMESPACES")) {
 		allowed = true
 	}
-	clusterRole := newClusterRole(name, policyRules, cr)
+	clusterRole := newClusterRole(componentName, policyRules, cr)
 	if err := applyReconcilerHook(cr, clusterRole, ""); err != nil {
 		return nil, err
 	}
 
+	// fetch the name of custom cluster role provided for the component
+	customClusterRoleName := getCustomClusterRoleName(componentName, cr)
+	customClusterRole := &v1.ClusterRole{}
+	if customClusterRoleName != "" {
+		err := r.Client.Get(context.TODO(), types.NamespacedName{Name: customClusterRoleName}, customClusterRole)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find the specified cluster role %s for the service account associated with %s : %s", customClusterRoleName, componentName, err)
+		}
+	}
+
+	existingClusterRoleExists := false
 	existingClusterRole := &v1.ClusterRole{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRole.Name}, existingClusterRole)
 	if err != nil {
 		if !errors.IsNotFound(err) {
-			return nil, fmt.Errorf("failed to reconcile the cluster role for the service account associated with %s : %s", name, err)
+			return nil, fmt.Errorf("failed to reconcile the cluster role for the service account associated with %s : %s", componentName, err)
 		}
 		if !allowed {
 			// Do Nothing
 			return nil, nil
 		}
-		return clusterRole, r.Client.Create(context.TODO(), clusterRole)
-	}
 
-	if !allowed {
-		return nil, r.Client.Delete(context.TODO(), existingClusterRole)
-	}
+		// custom cluster role is not given, create default one
+		if customClusterRoleName == "" {
+			return clusterRole, r.Client.Create(context.TODO(), clusterRole)
+		}
+	} else {
+		existingClusterRoleExists = true
+		// Role exists but there is no custom role, check if allowed and update rules if needed
+		if !allowed {
+			return nil, r.Client.Delete(context.TODO(), existingClusterRole)
+		}
 
-	// if the Rules differ, update the Role
-	if !reflect.DeepEqual(existingClusterRole.Rules, clusterRole.Rules) {
-		existingClusterRole.Rules = clusterRole.Rules
-		if err := r.Client.Update(context.TODO(), existingClusterRole); err != nil {
-			return nil, err
+		// if the Rules differ, update the Role
+		if !reflect.DeepEqual(existingClusterRole.Rules, clusterRole.Rules) {
+			existingClusterRole.Rules = clusterRole.Rules
+			if err := r.Client.Update(context.TODO(), existingClusterRole); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return existingClusterRole, nil
+
+	// Return either custom or existing role
+	if customClusterRoleName != "" {
+		log.Info("Checking to see if we need to delete existing cluster role")
+		if existingClusterRoleExists {
+			log.Info("Deleting existing cluster role")
+			err = r.Client.Delete(context.TODO(), existingClusterRole)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("failed to delete default ClusterRole [%s]", existingClusterRole.Name))
+			}
+		}
+		return customClusterRole, nil
+	} else {
+		return existingClusterRole, nil
+	}
 }
 
 func deleteClusterRoles(c client.Client, clusterRoleList *v1.ClusterRoleList) error {

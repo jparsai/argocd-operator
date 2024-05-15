@@ -163,7 +163,7 @@ func TestReconcileArgoCD_reconcileClusterRoleBinding(t *testing.T) {
 	cl := makeTestReconcilerClient(sch, resObjs, subresObjs, runtimeObjs)
 	r := makeTestReconciler(cl, sch)
 
-	workloadIdentifier := "x"
+	workloadIdentifier := common.ArgoCDApplicationControllerComponent
 	expectedClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: workloadIdentifier}}
 
 	assert.NoError(t, r.reconcileClusterRoleBinding(workloadIdentifier, expectedClusterRole, a))
@@ -182,6 +182,21 @@ func TestReconcileArgoCD_reconcileClusterRoleBinding(t *testing.T) {
 
 	clusterRoleBinding = &rbacv1.ClusterRoleBinding{}
 	assert.NoError(t, r.Client.Get(context.TODO(), types.NamespacedName{Name: expectedName}, clusterRoleBinding))
+
+	// Set the custom cluster role name
+	customClusterRoleName := "custom-argocd-controller"
+	a.Spec.Controller.Env = append(a.Spec.Controller.Env, corev1.EnvVar{Name: common.ArgoCDControllerClusterScopeRoleEnvName, Value: customClusterRoleName})
+
+	// Test that RoleBinding is updated for custom role
+	assert.NoError(t, r.reconcileClusterRoleBinding(workloadIdentifier, expectedClusterRole, a))
+	clusterRoleBinding = &rbacv1.ClusterRoleBinding{}
+	assert.NoError(t, r.Client.Get(context.TODO(), types.NamespacedName{Name: expectedName}, clusterRoleBinding))
+	expectedRoleRef := rbacv1.RoleRef{
+		APIGroup: rbacv1.GroupName,
+		Kind:     "ClusterRole",
+		Name:     customClusterRoleName,
+	}
+	assert.Equal(t, clusterRoleBinding.RoleRef, expectedRoleRef)
 }
 
 func TestReconcileArgoCD_reconcileRoleBinding_custom_role(t *testing.T) {
@@ -226,13 +241,16 @@ func TestReconcileArgoCD_reconcileRoleBinding_custom_role(t *testing.T) {
 		assert.Equal(t, roleBinding.RoleRef, expectedRoleRef)
 	}
 
-	t.Setenv(common.ArgoCDControllerClusterRoleEnvName, "custom-controller-role")
+	// Set the custom cluster role name for application controller
+	a.Spec.Controller.Env = append(a.Spec.Controller.Env, corev1.EnvVar{Name: common.ArgoCDControllerClusterRoleEnvName, Value: "custom-controller-role"})
 	assert.NoError(t, r.reconcileRoleBinding(common.ArgoCDApplicationControllerComponent, p, a))
 
 	expectedName = fmt.Sprintf("%s-%s", a.Name, "argocd-application-controller")
 	checkForUpdatedRoleRef(t, "custom-controller-role", expectedName)
 
-	t.Setenv(common.ArgoCDServerClusterRoleEnvName, "custom-server-role")
+	// Set the custom cluster role name for server
+	a.Spec.Server.Env = append(a.Spec.Server.Env, corev1.EnvVar{Name: common.ArgoCDServerClusterRoleEnvName, Value: "custom-server-role"})
+
 	assert.NoError(t, r.reconcileRoleBinding("argocd-server", p, a))
 
 	expectedName = fmt.Sprintf("%s-%s", a.Name, "argocd-server")
