@@ -3,7 +3,6 @@ package argocd
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
@@ -87,8 +86,8 @@ func (r *ReconcileArgoCD) reconcileRoleBindings(cr *argoproj.ArgoCD) error {
 	params := getPolicyRuleList(r.Client)
 
 	for _, param := range params {
-		if err := r.reconcileRoleBinding(param.name, param.policyRule, cr); err != nil {
-			return fmt.Errorf("error reconciling roleBinding for %q: %w", param.name, err)
+		if err := r.reconcileRoleBinding(param.componentName, param.policyRule, cr); err != nil {
+			return fmt.Errorf("error reconciling roleBinding for %q: %w", param.componentName, err)
 		}
 	}
 
@@ -161,7 +160,7 @@ func (r *ReconcileArgoCD) reconcileRoleBinding(name string, rules []v1.PolicyRul
 			},
 		}
 
-		customRoleName := getCustomRoleName(name)
+		customRoleName := getCustomRoleName(name, cr)
 		if customRoleName != "" {
 			roleBinding.RoleRef = v1.RoleRef{
 				APIGroup: v1.GroupName,
@@ -312,13 +311,24 @@ func (r *ReconcileArgoCD) reconcileRoleBinding(name string, rules []v1.PolicyRul
 	return nil
 }
 
-func getCustomRoleName(name string) string {
-	if name == common.ArgoCDApplicationControllerComponent {
-		return os.Getenv(common.ArgoCDControllerClusterRoleEnvName)
+func getCustomRoleName(componentName string, cr *argoproj.ArgoCD) string {
+
+	if componentName == common.ArgoCDApplicationControllerComponent && cr.Spec.Controller.Env != nil {
+		for _, env := range cr.Spec.Controller.Env {
+			if env.Name == common.ArgoCDControllerClusterRoleEnvName {
+				return env.Value
+			}
+		}
 	}
-	if name == common.ArgoCDServerComponent {
-		return os.Getenv(common.ArgoCDServerClusterRoleEnvName)
+
+	if componentName == common.ArgoCDServerComponent && cr.Spec.Server.Env != nil {
+		for _, env := range cr.Spec.Server.Env {
+			if env.Name == common.ArgoCDServerClusterRoleEnvName {
+				return env.Value
+			}
+		}
 	}
+
 	return ""
 }
 

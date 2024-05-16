@@ -241,13 +241,13 @@ func TestReconcileArgoCD_reconcileRoleBinding_custom_role(t *testing.T) {
 		assert.Equal(t, roleBinding.RoleRef, expectedRoleRef)
 	}
 
-	t.Setenv(common.ArgoCDControllerClusterRoleEnvName, "custom-controller-role")
+	a.Spec.Controller.Env = append(a.Spec.Controller.Env, corev1.EnvVar{Name: common.ArgoCDControllerClusterRoleEnvName, Value: "custom-controller-role"})
 	assert.NoError(t, r.reconcileRoleBinding(common.ArgoCDApplicationControllerComponent, p, a))
 
 	expectedName = fmt.Sprintf("%s-%s", a.Name, "argocd-application-controller")
 	checkForUpdatedRoleRef(t, "custom-controller-role", expectedName)
+	a.Spec.Server.Env = append(a.Spec.Server.Env, corev1.EnvVar{Name: common.ArgoCDServerClusterRoleEnvName, Value: "custom-server-role"})
 
-	t.Setenv(common.ArgoCDServerClusterRoleEnvName, "custom-server-role")
 	assert.NoError(t, r.reconcileRoleBinding("argocd-server", p, a))
 
 	expectedName = fmt.Sprintf("%s-%s", a.Name, "argocd-server")

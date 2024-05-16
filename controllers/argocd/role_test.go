@@ -326,7 +326,7 @@ func TestReconcileArgoCD_reconcileRole_custom_role(t *testing.T) {
 	assert.Equal(t, expectedRules, reconciledRole.Rules)
 
 	// set the custom role as env variable
-	t.Setenv(common.ArgoCDControllerClusterRoleEnvName, "custom-role")
+	a.Spec.Controller.Env = append(a.Spec.Controller.Env, corev1.EnvVar{Name: common.ArgoCDControllerClusterRoleEnvName, Value: "custom-role"})
 
 	_, err = r.reconcileRole(workloadIdentifier, expectedRules, a)
 	assert.NoError(t, err)
