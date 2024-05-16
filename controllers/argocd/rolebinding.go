@@ -311,8 +311,10 @@ func (r *ReconcileArgoCD) reconcileRoleBinding(name string, rules []v1.PolicyRul
 	return nil
 }
 
+// getCustomRoleName returns value of env variables defined for custom cluster role for namespace scoped Argo CD
 func getCustomRoleName(componentName string, cr *argoproj.ArgoCD) string {
 
+	// return env variable value for application-controller
 	if componentName == common.ArgoCDApplicationControllerComponent && cr.Spec.Controller.Env != nil {
 		for _, env := range cr.Spec.Controller.Env {
 			if env.Name == common.ArgoCDControllerClusterRoleEnvName {
@@ -321,6 +323,7 @@ func getCustomRoleName(componentName string, cr *argoproj.ArgoCD) string {
 		}
 	}
 
+	// return env variable value for argocd server
 	if componentName == common.ArgoCDServerComponent && cr.Spec.Server.Env != nil {
 		for _, env := range cr.Spec.Server.Env {
 			if env.Name == common.ArgoCDServerClusterRoleEnvName {
@@ -332,8 +335,10 @@ func getCustomRoleName(componentName string, cr *argoproj.ArgoCD) string {
 	return ""
 }
 
+// getCustomClusterRoleName returns value of env variables defined for custom cluster role for cluster scoped Argo CD
 func getCustomClusterRoleName(componentName string, cr *argoproj.ArgoCD) string {
 
+	// return env variable value for application-controller
 	if componentName == common.ArgoCDApplicationControllerComponent && cr.Spec.Controller.Env != nil {
 		for _, env := range cr.Spec.Controller.Env {
 			if env.Name == common.ArgoCDControllerClusterScopeRoleEnvName {
@@ -342,6 +347,7 @@ func getCustomClusterRoleName(componentName string, cr *argoproj.ArgoCD) string 
 		}
 	}
 
+	// return env variable value for argocd server
 	if componentName == common.ArgoCDServerComponent && cr.Spec.Server.Env != nil {
 		for _, env := range cr.Spec.Server.Env {
 			if env.Name == common.ArgoCDServerClusterScopeRoleEnvName {
@@ -424,8 +430,7 @@ func (r *ReconcileArgoCD) reconcileClusterRoleBinding(name string, role *v1.Clus
 		}
 	}
 
-	// if the rolebinding exists but the roleRef changed we need to delete it and recreate it since we cannot
-	// a role with a different roleRef
+	// if the rolebinding exists but the roleRef changed we need to delete it and recreate it since we cannot have a role with a different roleRef
 	if roleBindingExists {
 		// if the RoleRef changes, delete the existing role binding and create a new one
 		if !reflect.DeepEqual(roleBinding.RoleRef, roleRef) {

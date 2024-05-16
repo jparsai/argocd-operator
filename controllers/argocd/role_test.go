@@ -188,7 +188,7 @@ func TestReconcileArgoCD_reconcileClusterRole_custom_role(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 
-	//Create custom-cluster-scope-role
+	// Create custom-cluster-scope-role
 	customClusterRole := &v1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "custom-cluster-scope-role",
@@ -196,7 +196,7 @@ func TestReconcileArgoCD_reconcileClusterRole_custom_role(t *testing.T) {
 	}
 	assert.NoError(t, r.Client.Create(context.TODO(), customClusterRole))
 
-	// Reconcile cluster role, custer cluster role name is set and it also exists, default role created earliershould be deleted
+	// Reconcile cluster role, custer cluster role name is set and it also exists, default role created earlier should be deleted
 	_, err = r.reconcileClusterRole(argoComponentName, expectedRules, a)
 	assert.NoError(t, err)
 

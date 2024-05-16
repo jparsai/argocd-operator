@@ -119,7 +119,7 @@ func (r *ReconcileArgoCD) reconcileRole(componentName string, policyRules []v1.P
 		}
 		// only skip creation of dex and redisHa roles for namespaces that no argocd instance is deployed in
 		if len(list.Items) < 1 {
-			// namespace doesn't contain argocd instance, so skipe all the ArgoCD internal roles
+			// namespace doesn't contain argocd instance, so skip all the ArgoCD internal roles
 			if cr.ObjectMeta.Namespace != namespace.Name && (componentName != common.ArgoCDApplicationControllerComponent && componentName != common.ArgoCDServerComponent) {
 				continue
 			}
@@ -287,6 +287,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 		return nil, err
 	}
 
+	// fetch the name of custom cluster role provided for the component
 	customClusterRoleName := getCustomClusterRoleName(componentName, cr)
 	customClusterRole := &v1.ClusterRole{}
 	if customClusterRoleName != "" {
@@ -308,6 +309,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 			return nil, nil
 		}
 
+		// custom cluster role is not given, create default one
 		if customClusterRoleName == "" {
 			return clusterRole, r.Client.Create(context.TODO(), clusterRole)
 		}
