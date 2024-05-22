@@ -340,6 +340,11 @@ func newRoleBindingWithNameForApplicationSourceNamespaces(namespace string, cr *
 
 func (r *ReconcileArgoCD) reconcileClusterRoleBinding(name string, role *v1.ClusterRole, cr *argoproj.ArgoCD) error {
 
+	if cr.Spec.DefaultClusterScopedRoleCreationDisabled {
+		// Don't create a default ClusterRoleBinding, because user wants to create a custom ClusterRoleBinding for cluster-scoped instance.
+		return nil
+	}
+
 	// get expected name
 	roleBinding := newClusterRoleBindingWithname(name, cr)
 	// fetch existing rolebinding by name

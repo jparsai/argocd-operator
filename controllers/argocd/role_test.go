@@ -151,6 +151,34 @@ func TestReconcileArgoCD_reconcileClusterRole(t *testing.T) {
 	assert.Contains(t, r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole).Error(), "not found")
 }
 
+func TestReconcileArgoCD_reconcileClusterRole_disabled(t *testing.T) {
+	logf.SetLogger(ZapLogger(true))
+	a := makeTestArgoCD()
+
+	// Disable creation of default ClusterRole
+	a.Spec.DefaultClusterScopedRoleCreationDisabled = true
+
+	resObjs := []client.Object{a}
+	subresObjs := []client.Object{a}
+	runtimeObjs := []runtime.Object{}
+	sch := makeTestReconcilerScheme(argoproj.AddToScheme)
+	cl := makeTestReconcilerClient(sch, resObjs, subresObjs, runtimeObjs)
+	r := makeTestReconciler(cl, sch)
+
+	workloadIdentifier := common.ArgoCDApplicationControllerComponent
+	clusterRoleName := GenerateUniqueResourceName(workloadIdentifier, a)
+	expectedRules := policyRuleForApplicationController()
+
+	t.Setenv("ARGOCD_CLUSTER_CONFIG_NAMESPACES", a.Namespace)
+	_, err := r.reconcileClusterRole(workloadIdentifier, expectedRules, a)
+	assert.NoError(t, err)
+
+	reconciledClusterRole := &v1.ClusterRole{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
+}
+
 func TestReconcileArgoCD_reconcileRoleForApplicationSourceNamespaces(t *testing.T) {
 	logf.SetLogger(ZapLogger(true))
 	sourceNamespace := "newNamespaceTest"

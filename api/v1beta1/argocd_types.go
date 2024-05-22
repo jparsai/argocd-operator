@@ -852,6 +852,9 @@ type ArgoCDSpec struct {
 
 	// Banner defines an additional banner to be displayed in Argo CD UI
 	Banner *Banner `json:"banner,omitempty"`
+
+	// DefaultClusterScopedRoleCreationDisabled will disable creation of default ClusterRoles for a cluster scoped instance.
+	DefaultClusterScopedRoleCreationDisabled bool `json:"defaultClusterScopedRoleCreationDisabled,omitempty"`
 }
 
 // ArgoCDStatus defines the observed state of ArgoCD

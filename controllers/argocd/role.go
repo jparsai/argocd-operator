@@ -284,6 +284,12 @@ func (r *ReconcileArgoCD) reconcileClusterRole(name string, policyRules []v1.Pol
 	if allowedNamespace(cr.Namespace, os.Getenv("ARGOCD_CLUSTER_CONFIG_NAMESPACES")) {
 		allowed = true
 	}
+
+	if allowed && cr.Spec.DefaultClusterScopedRoleCreationDisabled {
+		// Don't create a default ClusterRole, because user wants to create a custom ClusterRole for cluster-scoped instance.
+		return nil, nil
+	}
+
 	clusterRole := newClusterRole(name, policyRules, cr)
 	if err := applyReconcilerHook(cr, clusterRole, ""); err != nil {
 		return nil, err

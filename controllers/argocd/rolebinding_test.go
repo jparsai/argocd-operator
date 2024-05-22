@@ -184,6 +184,32 @@ func TestReconcileArgoCD_reconcileClusterRoleBinding(t *testing.T) {
 	assert.NoError(t, r.Client.Get(context.TODO(), types.NamespacedName{Name: expectedName}, clusterRoleBinding))
 }
 
+func TestReconcileArgoCD_reconcileClusterRoleBinding_disabled(t *testing.T) {
+	logf.SetLogger(ZapLogger(true))
+	a := makeTestArgoCD()
+
+	// Disable creation of default ClusterRole, hence RoleBinding wont be created either
+	a.Spec.DefaultClusterScopedRoleCreationDisabled = true
+
+	resObjs := []client.Object{a}
+	subresObjs := []client.Object{a}
+	runtimeObjs := []runtime.Object{}
+	sch := makeTestReconcilerScheme(argoproj.AddToScheme)
+	cl := makeTestReconcilerClient(sch, resObjs, subresObjs, runtimeObjs)
+	r := makeTestReconciler(cl, sch)
+
+	workloadIdentifier := "x"
+	expectedClusterRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: workloadIdentifier}}
+
+	assert.NoError(t, r.reconcileClusterRoleBinding(workloadIdentifier, expectedClusterRole, a))
+
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{}
+	expectedName := fmt.Sprintf("%s-%s-%s", a.Name, a.Namespace, workloadIdentifier)
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: expectedName}, clusterRoleBinding)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
+}
+
 func TestReconcileArgoCD_reconcileRoleBinding_custom_role(t *testing.T) {
 	logf.SetLogger(ZapLogger(true))
 	a := makeTestArgoCD()
