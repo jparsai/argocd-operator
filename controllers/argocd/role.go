@@ -286,6 +286,10 @@ func (r *ReconcileArgoCD) reconcileClusterRole(name string, policyRules []v1.Pol
 		allowed = true
 	}
 
+	if allowed && cr.Spec.DefaultClusterScopedRoleDisabled && cr.Spec.AggregatedClusterRoles {
+		return nil, fmt.Errorf("Custom Cluster Roles and Aggregated Cluster Roles can not be used together.")
+	}
+
 	// Check if it is cluster-scoped instance namespace and user doesn't want to use default ClusterRole
 	if allowed && cr.Spec.DefaultClusterScopedRoleDisabled {
 
@@ -304,8 +308,44 @@ func (r *ReconcileArgoCD) reconcileClusterRole(name string, policyRules []v1.Pol
 	}
 
 	clusterRole := newClusterRole(name, policyRules, cr)
-	if err := applyReconcilerHook(cr, clusterRole, ""); err != nil {
-		return nil, err
+
+	if allowed && cr.Spec.AggregatedClusterRoles {
+		if name == common.ArgoCDApplicationControllerComponent {
+			clusterRole.AggregationRule = &v1.AggregationRule{
+				ClusterRoleSelectors: []metav1.LabelSelector{
+					{
+						MatchLabels: map[string]string{
+							common.ArgoCDAggregateToControllerLabelKey: "true",
+							common.ArgoCDKeyManagedBy:                  cr.Name,
+						},
+					},
+				},
+			}
+			clusterRole.Annotations[common.AutoUpdateAnnotationKey] = "true"
+			clusterRole.Rules = []v1.PolicyRule{}
+		}
+
+		if name == common.ArgoCDApplicationControllerComponentAdmin {
+			clusterRole.AggregationRule = &v1.AggregationRule{
+				ClusterRoleSelectors: []metav1.LabelSelector{
+					{
+						MatchLabels: map[string]string{
+							common.ArgoCDAggregateToAdminLabelKey: "true",
+							common.ArgoCDKeyManagedBy:             cr.Name,
+						},
+					},
+				},
+			}
+			clusterRole.Labels[common.ArgoCDAggregateToControllerLabelKey] = "true"
+		}
+
+		if name == common.ArgoCDApplicationControllerComponentView {
+			clusterRole.Labels[common.ArgoCDAggregateToControllerLabelKey] = "true"
+		}
+	} else {
+		if err := applyReconcilerHook(cr, clusterRole, ""); err != nil {
+			return nil, err
+		}
 	}
 
 	existingClusterRole := &v1.ClusterRole{}
@@ -323,6 +363,73 @@ func (r *ReconcileArgoCD) reconcileClusterRole(name string, policyRules []v1.Pol
 
 	if !allowed {
 		return nil, r.Client.Delete(context.TODO(), existingClusterRole)
+	}
+
+	if cr.Spec.AggregatedClusterRoles {
+		changed := false
+		aggregatedClusterRoleExists := true
+		if name == common.ArgoCDApplicationControllerComponent {
+
+			if !reflect.DeepEqual(existingClusterRole.AggregationRule, clusterRole.AggregationRule) {
+				aggregatedClusterRoleExists = false
+				existingClusterRole.AggregationRule = clusterRole.AggregationRule
+				changed = true
+			}
+
+			if !reflect.DeepEqual(existingClusterRole.Annotations, clusterRole.Annotations) {
+				existingClusterRole.Annotations = clusterRole.Annotations
+				changed = true
+			}
+
+			if !aggregatedClusterRoleExists {
+				existingClusterRole.Rules = []v1.PolicyRule{}
+			}
+		}
+
+		if name == common.ArgoCDApplicationControllerComponentView {
+			if !reflect.DeepEqual(existingClusterRole.Labels, clusterRole.Labels) {
+				existingClusterRole.Labels = clusterRole.Labels
+				changed = true
+			}
+		}
+
+		if name == common.ArgoCDApplicationControllerComponentAdmin {
+			if !reflect.DeepEqual(existingClusterRole.AggregationRule, clusterRole.AggregationRule) {
+				existingClusterRole.AggregationRule = clusterRole.AggregationRule
+				changed = true
+			}
+
+			if !reflect.DeepEqual(existingClusterRole.Labels, clusterRole.Labels) {
+				existingClusterRole.Labels = clusterRole.Labels
+				changed = true
+			}
+		}
+
+		if changed {
+			if err := r.Client.Update(context.TODO(), existingClusterRole); err != nil {
+				return nil, err
+			}
+		}
+		return existingClusterRole, nil
+	} else {
+		changed := false
+		if name == common.ArgoCDApplicationControllerComponent {
+
+			if !reflect.DeepEqual(existingClusterRole.AggregationRule, clusterRole.AggregationRule) {
+				existingClusterRole.AggregationRule = clusterRole.AggregationRule
+				changed = true
+			}
+
+			if !reflect.DeepEqual(existingClusterRole.Annotations, clusterRole.Annotations) {
+				existingClusterRole.Annotations = clusterRole.Annotations
+				changed = true
+			}
+		}
+		if changed {
+			if err := r.Client.Update(context.TODO(), existingClusterRole); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// if the Rules differ, update the Role
