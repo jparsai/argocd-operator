@@ -152,64 +152,45 @@ func TestReconcileArgoCD_reconcileClusterRole(t *testing.T) {
 }
 
 func TestReconcileArgoCD_reconcileClusterRole_custom_cluster_role(t *testing.T) {
-	logf.SetLogger(ZapLogger(true))
-	a := makeTestArgoCD()
-
-	resObjs := []client.Object{a}
-	subresObjs := []client.Object{a}
-	runtimeObjs := []runtime.Object{}
-	sch := makeTestReconcilerScheme(argoproj.AddToScheme)
-	cl := makeTestReconcilerClient(sch, resObjs, subresObjs, runtimeObjs)
-	r := makeTestReconciler(cl, sch)
-
+	ctx, r, a, cl := setup(t)
 	workloadIdentifier := common.ArgoCDApplicationControllerComponent
 	clusterRoleName := GenerateUniqueResourceName(workloadIdentifier, a)
 	expectedRules := policyRuleForApplicationController()
-
-	// Set the namespace to be cluster-scoped
-	t.Setenv("ARGOCD_CLUSTER_CONFIG_NAMESPACES", a.Namespace)
-
-	// Disable creation of default ClusterRole
-	a.Spec.DefaultClusterScopedRoleDisabled = true
-
-	err := cl.Update(context.Background(), a)
-	assert.NoError(t, err)
-
-	// Reconcile ClusterRole
-	_, err = r.reconcileClusterRole(workloadIdentifier, expectedRules, a)
-	assert.NoError(t, err)
-
-	// Ensure default ClusterRole is not created
 	reconciledClusterRole := &v1.ClusterRole{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.Error(t, err)
-	assert.ErrorContains(t, err, "not found")
 
-	// Now enable creation of default ClusterRole
-	a.Spec.DefaultClusterScopedRoleDisabled = false
-	err = cl.Update(context.Background(), a)
+	t.Log("Mode 1: Enable custom ClusterRole")
+	enableCustomClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole")
+	_, err := r.reconcileClusterRole(workloadIdentifier, expectedRules, a)
 	assert.NoError(t, err)
 
-	// Again reconcile ClusterRole
+	t.Log("Mode 1: Verify custom ClusterRole is allowed.")
+	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
+
+	t.Log("Mode 1: Create a custom ClusterRole.")
+	customClusterRole := newClusterRole(clusterRoleName, []v1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}}, a)
+	assert.NoError(t, r.Client.Create(ctx, customClusterRole))
+
+	t.Log("Mode 2: Enable default ClusterRole")
+	enableDefaultClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 2: Reconcile ClusterRole")
 	_, err = r.reconcileClusterRole(workloadIdentifier, expectedRules, a)
 	assert.NoError(t, err)
 
-	// Ensure default ClusterRole is created now
-	assert.NoError(t, r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
+	t.Log("Mode 2: Verify default ClusterRole is created.")
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
-	// Once again disable creation of default ClusterRole
-	a.Spec.DefaultClusterScopedRoleDisabled = true
-	err = cl.Update(context.Background(), a)
-	assert.NoError(t, err)
+	t.Log("Mode 1: Enable custom ClusterRole")
+	enableCustomClusterRoles(t, ctx, a, cl)
 
-	// Once again reconcile ClusterRole
+	t.Log("Mode 1: Reconcile ClusterRole")
 	_, err = r.reconcileClusterRole(workloadIdentifier, expectedRules, a)
 	assert.NoError(t, err)
 
-	// Ensure default ClusterRole is deleted again
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.Error(t, err)
-	assert.ErrorContains(t, err, "not found")
+	t.Log("Mode 1: Verify custom ClusterRole is allowed.")
+	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
 }
 
 func TestReconcileArgoCD_reconcileRoleForApplicationSourceNamespaces(t *testing.T) {
@@ -429,7 +410,7 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_error(t *testing.T) {
 	componentName := common.ArgoCDApplicationControllerComponent
 
 	t.Log("Enable both Aggregated and Custom ClusterRoles.")
-	a.Spec.AggregatedClusterRoles = true
+	a.Spec.AggregatedClusterRolesEnabled = true
 	a.Spec.DefaultClusterScopedRoleDisabled = true
 	assert.NoError(t, cl.Update(ctx, a))
 
@@ -531,7 +512,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_aggregated(t *testing.T
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 2: Switch to aggregated ClusterRole.")
 	enableAggregatedClusterRoles(t, ctx, a, cl)
@@ -551,7 +532,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_aggregated(t *testing.T
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 }
 
 // This test is to verify the scenario when user is switching from aggregated to default ClusterRole and back to aggregated ClusterRole.
@@ -580,7 +561,7 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_default(t *testing.T
 	assert.NoError(t, err)
 
 	t.Log("Mode 2: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
 	enableAggregatedClusterRoles(t, ctx, a, cl)
@@ -870,7 +851,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_custom(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 2: Switch to custom ClusterRole.")
 	enableCustomClusterRoles(t, ctx, a, cl)
@@ -894,7 +875,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_custom(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 }
 
 // This test is to verify the scenario when user is switching from custom to default ClusterRole and back to custom ClusterRole.
@@ -927,7 +908,7 @@ func TestReconcileArgoCD_reconcileClusterRole_custom_to_default(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Log("Mode 2: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 1: Switch back to custom ClusterRole.")
 	enableCustomClusterRoles(t, ctx, a, cl)
@@ -954,7 +935,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_custom_to_aggregated(t 
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 2: Switch to custom ClusterRole.")
 	enableCustomClusterRoles(t, ctx, a, cl)
@@ -994,7 +975,7 @@ func TestReconcileArgoCD_reconcileClusterRole_default_to_aggregated_to_custom(t 
 	assert.NoError(t, err)
 
 	t.Log("Mode 1: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 2: Switch to aggregated ClusterRole.")
 	enableAggregatedClusterRoles(t, ctx, a, cl)
@@ -1101,7 +1082,7 @@ func TestReconcileArgoCD_reconcileClusterRole_custom_to_aggregated_to_default(t 
 	assert.NoError(t, err)
 
 	t.Log("Mode 3: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 }
 
 // This test is to verify the scenario when user is switching from aggregated to default ClusterRole and then to custom ClusterRole.
@@ -1130,7 +1111,7 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_default_to_custom(t 
 	assert.NoError(t, err)
 
 	t.Log("Mode 2: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 
 	t.Log("Mode 3: Switch to custom ClusterRole.")
 	enableCustomClusterRoles(t, ctx, a, cl)
@@ -1187,7 +1168,7 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_custom_to_default(t 
 	assert.NoError(t, err)
 
 	t.Log("Mode 3: Verify default ClusterRole is created.")
-	validateDafaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
+	validateDefaultClusterRole(t, ctx, r, reconciledClusterRole, clusterRoleName)
 }
 
 func setup(t *testing.T) (context.Context, *ReconcileArgoCD, *argoproj.ArgoCD, client.Client) {
@@ -1205,11 +1186,11 @@ func setup(t *testing.T) (context.Context, *ReconcileArgoCD, *argoproj.ArgoCD, c
 	return ctx, r, a, cl
 }
 
+// validateAggregatedAdminClusterRole checks that ClusterRole for View permissions has field values configured in aggregated mode
 func validateAggregatedViewClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, clusterRoleName string) {
 	// Ensure aggregated ClusterRole for view permission is created
 	reconciledClusterRole := &v1.ClusterRole{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.NoError(t, err)
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
 
 	// Ensure ClusterRole has expected Labels
 	assert.EqualValues(t, reconciledClusterRole.Labels[common.ArgoCDAggregateToControllerLabelKey], "true")
@@ -1217,10 +1198,10 @@ func validateAggregatedViewClusterRole(t *testing.T, ctx context.Context, r *Rec
 	assert.EqualValues(t, reconciledClusterRole.Rules, policyRuleForApplicationControllerView())
 }
 
+// validateAggregatedAdminClusterRole checks that ClusterRole for Admin permissions has field values configured in aggregated mode
 func validateAggregatedAdminClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, a *argoproj.ArgoCD, reconciledClusterRole *v1.ClusterRole, clusterRoleName string) {
 
-	err := r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.NoError(t, err)
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
 
 	// Ensure ClusterRole has expected AggregationRule
 	expectedAggregationRule := &v1.AggregationRule{ClusterRoleSelectors: []metav1.LabelSelector{{
@@ -1233,10 +1214,10 @@ func validateAggregatedAdminClusterRole(t *testing.T, ctx context.Context, r *Re
 	assert.EqualValues(t, reconciledClusterRole.Rules, policyRuleForApplicationControllerAdmin())
 }
 
+// validateAggregatedControllerClusterRole checks that ClusterRole has field values configured in aggregated mode
 func validateAggregatedControllerClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, a *argoproj.ArgoCD, reconciledClusterRole *v1.ClusterRole, clusterRoleName string) {
 
-	err := r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.NoError(t, err)
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
 
 	// Ensure ClusterRole has expected AggregationRule
 	expectedAggregationRule := &v1.AggregationRule{ClusterRoleSelectors: []metav1.LabelSelector{{
@@ -1249,10 +1230,10 @@ func validateAggregatedControllerClusterRole(t *testing.T, ctx context.Context, 
 	assert.Empty(t, reconciledClusterRole.Rules)
 }
 
-func validateDafaultClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, reconciledClusterRole *v1.ClusterRole, clusterRoleName string) {
+// validateDefaultClusterRole checks that ClusterRole has field values configured in default mode
+func validateDefaultClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, reconciledClusterRole *v1.ClusterRole, clusterRoleName string) {
 
-	err := r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
-	assert.NoError(t, err)
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
 
 	// Ensure ClusterRole does not have AggregationRule
 	assert.Empty(t, reconciledClusterRole.AggregationRule)
@@ -1262,26 +1243,30 @@ func validateDafaultClusterRole(t *testing.T, ctx context.Context, r *ReconcileA
 	assert.Equal(t, reconciledClusterRole.Rules, policyRuleForApplicationController())
 }
 
+// validateCustomClusterRole checks that default ClusterRole is deleted
 func validateCustomClusterRole(t *testing.T, ctx context.Context, r *ReconcileArgoCD, clusterRoleName string, reconciledClusterRole *v1.ClusterRole) {
 	err := r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "not found")
 }
 
+// enableAggregatedClusterRoles will set fields to create aggregated ClusterRoles
 func enableAggregatedClusterRoles(t *testing.T, ctx context.Context, a *argoproj.ArgoCD, cl client.Client) {
-	a.Spec.AggregatedClusterRoles = true
+	a.Spec.AggregatedClusterRolesEnabled = true
 	a.Spec.DefaultClusterScopedRoleDisabled = false
 	assert.NoError(t, cl.Update(ctx, a))
 }
 
+// enableCustomClusterRoles will set fields to create custom ClusterRoles
 func enableCustomClusterRoles(t *testing.T, ctx context.Context, a *argoproj.ArgoCD, cl client.Client) {
 	a.Spec.DefaultClusterScopedRoleDisabled = true
-	a.Spec.AggregatedClusterRoles = false
+	a.Spec.AggregatedClusterRolesEnabled = false
 	assert.NoError(t, cl.Update(ctx, a))
 }
 
+// enableDefaultClusterRoles will set fields to create default ClusterRoles
 func enableDefaultClusterRoles(t *testing.T, ctx context.Context, a *argoproj.ArgoCD, cl client.Client) {
 	a.Spec.DefaultClusterScopedRoleDisabled = false
-	a.Spec.AggregatedClusterRoles = false
+	a.Spec.AggregatedClusterRolesEnabled = false
 	assert.NoError(t, cl.Update(ctx, a))
 }

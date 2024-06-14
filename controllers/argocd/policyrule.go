@@ -43,8 +43,7 @@ func policyRuleForApplicationControllerView() []v1.PolicyRule {
 				"list",
 				"watch",
 			},
-		},
-		{
+		}, {
 			NonResourceURLs: []string{
 				"*",
 			},
@@ -57,7 +56,6 @@ func policyRuleForApplicationControllerView() []v1.PolicyRule {
 }
 
 func policyRuleForApplicationControllerAdmin() []v1.PolicyRule {
-
 	return []v1.PolicyRule{}
 }
 

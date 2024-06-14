@@ -121,7 +121,7 @@ func (r *ReconcileArgoCD) reconcileRole(name string, policyRules []v1.PolicyRule
 		}
 		// only skip creation of dex and redisHa roles for namespaces that no argocd instance is deployed in
 		if len(list.Items) < 1 {
-			// namespace doesn't contain argocd instance, so skipe all the ArgoCD internal roles
+			// namespace doesn't contain argocd instance, so skip all the ArgoCD internal roles
 			if cr.ObjectMeta.Namespace != namespace.Name && (name != common.ArgoCDApplicationControllerComponent && name != common.ArgoCDServerComponent) {
 				continue
 			}
@@ -287,7 +287,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 		allowed = true
 	}
 
-	if allowed && cr.Spec.DefaultClusterScopedRoleDisabled && cr.Spec.AggregatedClusterRoles {
+	if allowed && cr.Spec.DefaultClusterScopedRoleDisabled && cr.Spec.AggregatedClusterRolesEnabled {
 		return nil, fmt.Errorf("Custom Cluster Roles and Aggregated Cluster Roles can not be used together.")
 	}
 
@@ -302,7 +302,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 
 	expectedClusterRole := newClusterRole(componentName, policyRules, cr)
 
-	if allowed && cr.Spec.AggregatedClusterRoles {
+	if allowed && cr.Spec.AggregatedClusterRolesEnabled {
 		// if aggregated ClusterRole mode is enabled, then add required fields in ClusterRole
 		configureAggregatedClusterRole(cr, expectedClusterRole, componentName)
 	} else {
@@ -349,7 +349,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 	changed := false
 
 	// if existing ClusterRole field values differ from expected values then update them
-	if cr.Spec.AggregatedClusterRoles {
+	if cr.Spec.AggregatedClusterRolesEnabled {
 		changed = matchAggregatedClusterRoleFields(expectedClusterRole, existingClusterRole, componentName)
 	} else {
 		changed = matchDefaultClusterRoleFields(expectedClusterRole, existingClusterRole, componentName)
@@ -373,6 +373,7 @@ func deleteClusterRoles(c client.Client, clusterRoleList *v1.ClusterRoleList) er
 	return nil
 }
 
+// checkCustomClusterRoleMode checks if custom ClusterRole mode is enabled and deletes default ClusterRoles if they exist
 func checkCustomClusterRoleMode(r *ReconcileArgoCD, cr *argoproj.ArgoCD, componentName string, allowed bool) (bool, error) {
 	// check if it is cluster-scoped instance namespace and user doesn't want to use default ClusterRole
 	if allowed && cr.Spec.DefaultClusterScopedRoleDisabled {
