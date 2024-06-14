@@ -291,7 +291,7 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 		return nil, fmt.Errorf("Custom Cluster Roles and Aggregated Cluster Roles can not be used together.")
 	}
 
-	// if Custom ClusterRole mode is enabled then do nothing and return
+	// if custom ClusterRole mode is enabled then do nothing and return
 	useCustomClusterRole, err := checkCustomClusterRoleMode(r, cr, componentName, allowed)
 	if useCustomClusterRole {
 		if err != nil {
@@ -303,10 +303,23 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 	expectedClusterRole := newClusterRole(componentName, policyRules, cr)
 
 	if allowed && cr.Spec.AggregatedClusterRoles {
-		// if Aggregated ClusterRole mode is enabled, then add required fields in ClusterRole
+		// if aggregated ClusterRole mode is enabled, then add required fields in ClusterRole
 		configureAggregatedClusterRole(cr, expectedClusterRole, componentName)
 	} else {
-		// if Default ClusterRole mode is enabled, then permissions can be update using a Hook if needed
+		// if current mode is default mode, but last one was aggregated mode, then delete ClusterRoles for View and Admin permissions
+		if componentName == common.ArgoCDApplicationControllerComponentView || componentName == common.ArgoCDApplicationControllerComponentAdmin {
+			if err := r.Client.Get(context.TODO(), types.NamespacedName{Name: expectedClusterRole.Name}, expectedClusterRole); err == nil {
+				if err := r.Client.Delete(context.TODO(), expectedClusterRole); err != nil {
+					return nil, fmt.Errorf("failed to delete aggregated ClusterRoles: %s", expectedClusterRole.Name)
+				}
+				return nil, nil
+			}
+
+			// Do Nothing and return, as ClusterRoles for View and Admin permissions are not required in default mode
+			return nil, nil
+		}
+
+		// default ClusterRole mode is enabled and permissions can be update using a Hook if needed
 		if err := applyReconcilerHook(cr, expectedClusterRole, ""); err != nil {
 			return nil, err
 		}
@@ -319,10 +332,12 @@ func (r *ReconcileArgoCD) reconcileClusterRole(componentName string, policyRules
 		if !errors.IsNotFound(err) {
 			return nil, fmt.Errorf("failed to reconcile the cluster role for the service account associated with %s : %s", componentName, err)
 		}
+
 		if !allowed {
 			// no need to create ClusterRole as namespace can not host cluster-scoped Argo CD instance
 			return nil, nil
 		}
+
 		return expectedClusterRole, r.Client.Create(context.TODO(), expectedClusterRole)
 	}
 

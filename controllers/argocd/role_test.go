@@ -462,7 +462,7 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_controller(t *testing.T
 func TestReconcileArgoCD_reconcileClusterRole_aggregated_view(t *testing.T) {
 	ctx, r, a, cl := setup(t)
 	componentName := common.ArgoCDApplicationControllerComponentView
-
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
 	t.Log("Enable aggregated ClusterRole")
 	enableAggregatedClusterRoles(t, ctx, a, cl)
 
@@ -471,13 +471,27 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_view(t *testing.T) {
 
 	t.Log("Verify response.")
 	assert.NoError(t, err)
-	validateAggregatedViewClusterRole(t, ctx, r, GenerateUniqueResourceName(componentName, a))
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
+
+	t.Log("Change ClusterRole fields.")
+	reconciledClusterRole := &v1.ClusterRole{}
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
+	reconciledClusterRole.Labels = map[string]string{"test": "test"}
+	assert.NoError(t, r.Client.Update(ctx, reconciledClusterRole))
+
+	t.Log("Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRuleForApplicationControllerView(), a)
+
+	t.Log("Verify changes are reverted.")
+	assert.NoError(t, err)
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
 }
 
 // This test is to verify that aggregated ClusterRole for admin permission is created.
 func TestReconcileArgoCD_reconcileClusterRole_aggregated_admin(t *testing.T) {
 	ctx, r, a, cl := setup(t)
 	componentName := common.ArgoCDApplicationControllerComponentAdmin
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
 	reconciledClusterRole := &v1.ClusterRole{}
 
 	t.Log("Enable aggregated ClusterRole")
@@ -488,7 +502,20 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_admin(t *testing.T) {
 
 	t.Log("Verify response.")
 	assert.NoError(t, err)
-	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, GenerateUniqueResourceName(componentName, a))
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
+
+	t.Log("Change ClusterRole fields.")
+	assert.NoError(t, r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole))
+	reconciledClusterRole.Labels = map[string]string{"test": "test"}
+	reconciledClusterRole.AggregationRule = &v1.AggregationRule{}
+	assert.NoError(t, r.Client.Update(ctx, reconciledClusterRole))
+
+	t.Log("Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRuleForApplicationControllerAdmin(), a)
+
+	t.Log("Verify changes are reverted.")
+	assert.NoError(t, err)
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
 }
 
 // This test is to verify the scenario when user is switching from default to aggregated ClusterRole and back to default ClusterRole.
@@ -566,12 +593,12 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_default(t *testing.T
 	validateAggregatedControllerClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
 }
 
-// This test is to verify the scenario when user is switching from aggregated to custom ClusterRole and back to aggregated ClusterRole.
-func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_custom(t *testing.T) {
+// This test is to verify the scenario for View permission when user is switching from aggregated to default ClusterRole and back to aggregated ClusterRole.
+func TestReconcileArgoCD_reconcileClusterRole_view_aggregated_to_default(t *testing.T) {
 	ctx, r, a, cl := setup(t)
-	componentName := common.ArgoCDApplicationControllerComponent
+	componentName := common.ArgoCDApplicationControllerComponentView
 	clusterRoleName := GenerateUniqueResourceName(componentName, a)
-	policyRules := policyRuleForApplicationController()
+	policyRules := policyRuleForApplicationControllerView()
 	reconciledClusterRole := &v1.ClusterRole{}
 
 	t.Log("Mode 1: Enable aggregated ClusterRole.")
@@ -581,22 +608,20 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_custom(t *testing.T)
 	_, err := r.reconcileClusterRole(componentName, policyRules, a)
 	assert.NoError(t, err)
 
-	t.Log("Mode 1: Verify aggregated ClusterRole is created.")
-	validateAggregatedControllerClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
+	t.Log("Mode 1: Verify aggregated ClusterRole for View permission is created.")
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
 
-	t.Log("Mode 2: Switch to custom ClusterRole.")
-	enableCustomClusterRoles(t, ctx, a, cl)
+	t.Log("Mode 2: Switch to default ClusterRole.")
+	enableDefaultClusterRoles(t, ctx, a, cl)
 
 	t.Log("Mode 2: Reconcile ClusterRole.")
 	_, err = r.reconcileClusterRole(componentName, policyRules, a)
 	assert.NoError(t, err)
 
-	t.Log("Mode 2: Verify custom ClusterRole is allowed.")
-	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
-
-	t.Log("Mode 2: Create a custom ClusterRole.")
-	customClusterRole := newClusterRole(clusterRoleName, []v1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}}, a)
-	assert.NoError(t, r.Client.Create(ctx, customClusterRole))
+	t.Log("Mode 2: Verify aggregated ClusterRole for View permission is deleted now.")
+	err = r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
 
 	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
 	enableAggregatedClusterRoles(t, ctx, a, cl)
@@ -605,8 +630,49 @@ func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_custom(t *testing.T)
 	_, err = r.reconcileClusterRole(componentName, policyRules, a)
 	assert.NoError(t, err)
 
-	t.Log("Mode 1: Verify aggregated ClusterRole is created.")
-	validateAggregatedControllerClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
+	t.Log("Mode 1: Verify aggregated ClusterRole for View permission is created.")
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
+}
+
+// This test is to verify the scenario for Admin permission when user is switching from aggregated to default ClusterRole and back to aggregated ClusterRole.
+func TestReconcileArgoCD_reconcileClusterRole_admin_aggregated_to_default(t *testing.T) {
+	ctx, r, a, cl := setup(t)
+	componentName := common.ArgoCDApplicationControllerComponentAdmin
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
+	policyRules := policyRuleForApplicationControllerAdmin()
+	reconciledClusterRole := &v1.ClusterRole{}
+
+	t.Log("Mode 1: Enable aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err := r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole for Admin permission is created.")
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, GenerateUniqueResourceName(componentName, a))
+
+	t.Log("Mode 2: Switch to default ClusterRole.")
+	enableDefaultClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 2: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 2: Verify aggregated ClusterRole for Admin permission is deleted now.")
+	err = r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
+
+	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole for View permission is created.")
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, GenerateUniqueResourceName(componentName, a))
 }
 
 // This test is to verify the scenario when user is switching from custom to aggregated ClusterRole and back to custom ClusterRole.
@@ -650,6 +716,145 @@ func TestReconcileArgoCD_reconcileClusterRole_custom_to_aggregated(t *testing.T)
 
 	t.Log("Mode 1: Verify custom ClusterRole is allowed.")
 	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
+}
+
+// This test is to verify the scenario when user is switching from aggregated to custom ClusterRole and back to aggregated ClusterRole.
+func TestReconcileArgoCD_reconcileClusterRole_aggregated_to_custom(t *testing.T) {
+	ctx, r, a, cl := setup(t)
+	componentName := common.ArgoCDApplicationControllerComponent
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
+	policyRules := policyRuleForApplicationController()
+	reconciledClusterRole := &v1.ClusterRole{}
+
+	t.Log("Mode 1: Enable aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err := r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole is created.")
+	validateAggregatedControllerClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
+
+	t.Log("Mode 2: Switch to custom ClusterRole.")
+	enableCustomClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 2: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 2: Verify custom ClusterRole is allowed.")
+	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
+
+	t.Log("Mode 2: Create a custom ClusterRole.")
+	customClusterRole := newClusterRole(clusterRoleName, []v1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}}, a)
+	assert.NoError(t, r.Client.Create(ctx, customClusterRole))
+
+	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole is created.")
+	validateAggregatedControllerClusterRole(t, ctx, r, a, reconciledClusterRole, clusterRoleName)
+}
+
+// This test is to verify the scenario for View permission when user is switching from aggregated to custom ClusterRole and back to aggregated ClusterRole.
+func TestReconcileArgoCD_reconcileClusterRole_view_aggregated_to_custom(t *testing.T) {
+	ctx, r, a, cl := setup(t)
+	componentName := common.ArgoCDApplicationControllerComponentView
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
+	policyRules := policyRuleForApplicationControllerView()
+	reconciledClusterRole := &v1.ClusterRole{}
+
+	t.Log("Mode 1: Enable aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err := r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole for View permission is created.")
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
+
+	t.Log("Mode 2: Switch to custom ClusterRole.")
+	enableCustomClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 2: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 2: Verify custom ClusterRole is allowed.")
+	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
+
+	t.Log("Mode 2: Verify aggregated ClusterRole for View permission is deleted now.")
+	err = r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
+
+	t.Log("Mode 2: Create a custom ClusterRole.")
+	customClusterRole := newClusterRole(clusterRoleName, []v1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}}, a)
+	assert.NoError(t, r.Client.Create(ctx, customClusterRole))
+
+	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole is created.")
+	validateAggregatedViewClusterRole(t, ctx, r, clusterRoleName)
+}
+
+// This test is to verify the scenario for Admin permission when user is switching from aggregated to custom ClusterRole and back to aggregated ClusterRole.
+func TestReconcileArgoCD_reconcileClusterRole_admin_aggregated_to_custom(t *testing.T) {
+	ctx, r, a, cl := setup(t)
+	componentName := common.ArgoCDApplicationControllerComponentAdmin
+	clusterRoleName := GenerateUniqueResourceName(componentName, a)
+	policyRules := policyRuleForApplicationControllerAdmin()
+	reconciledClusterRole := &v1.ClusterRole{}
+
+	t.Log("Mode 1: Enable aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err := r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole for Admin permission is created.")
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, GenerateUniqueResourceName(componentName, a))
+
+	t.Log("Mode 2: Switch to custom ClusterRole.")
+	enableCustomClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 2: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 2: Verify custom ClusterRole is allowed.")
+	validateCustomClusterRole(t, ctx, r, clusterRoleName, reconciledClusterRole)
+
+	t.Log("Mode 2: Verify aggregated ClusterRole for Admin permission is deleted now.")
+	err = r.Client.Get(ctx, types.NamespacedName{Name: clusterRoleName}, reconciledClusterRole)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "not found")
+
+	t.Log("Mode 2: Create a custom ClusterRole.")
+	customClusterRole := newClusterRole(clusterRoleName, []v1.PolicyRule{{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"get"}}}, a)
+	assert.NoError(t, r.Client.Create(ctx, customClusterRole))
+
+	t.Log("Mode 1: Switch back to aggregated ClusterRole.")
+	enableAggregatedClusterRoles(t, ctx, a, cl)
+
+	t.Log("Mode 1: Reconcile ClusterRole.")
+	_, err = r.reconcileClusterRole(componentName, policyRules, a)
+	assert.NoError(t, err)
+
+	t.Log("Mode 1: Verify aggregated ClusterRole for Admin permission is created.")
+	validateAggregatedAdminClusterRole(t, ctx, r, a, reconciledClusterRole, GenerateUniqueResourceName(componentName, a))
 }
 
 // This test is to verify the scenario when user is switching from default to custom ClusterRole and back to default ClusterRole.
