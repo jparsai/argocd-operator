@@ -1016,6 +1016,9 @@ type PrincipalSpec struct {
 
 	// LogLevel refers to the log level used by the Principal component. Defaults to info if not configured. Valid options are debug, info, trace, error, and warn.
 	LogLevel string `json:"logLevel,omitempty"`
+
+	// Image is the name of Argo CD Agent image
+	Image string `json:"image,omitempty"`
 }
 
 func (a *PrincipalSpec) IsEnabled() bool {

@@ -83,6 +83,17 @@ func TestReconcilePrincipalService_ServiceDoesNotExist_PrincipalEnabled(t *testi
 	assert.Equal(t, expectedSpec.Ports, svc.Spec.Ports)
 	assert.Equal(t, expectedSpec.Selector, svc.Spec.Selector)
 
+	// Verify specific port configuration using constants
+	assert.Len(t, svc.Spec.Ports, 1)
+	port := svc.Spec.Ports[0]
+	assert.Equal(t, PrincipalServicePortName, port.Name)
+	assert.Equal(t, int32(PrincipalServiceHTTPSPort), port.Port)
+	assert.Equal(t, intstr.FromInt(PrincipalServiceTargetPort), port.TargetPort)
+	assert.Equal(t, corev1.ProtocolTCP, port.Protocol)
+
+	// Verify Service type is LoadBalancer
+	assert.Equal(t, corev1.ServiceTypeLoadBalancer, svc.Spec.Type)
+
 	// Verify owner reference is set
 	assert.Len(t, svc.OwnerReferences, 1)
 	assert.Equal(t, cr.Name, svc.OwnerReferences[0].Name)
@@ -319,6 +330,17 @@ func TestReconcilePrincipalMetricsService_ServiceDoesNotExist_PrincipalEnabled(t
 	assert.Equal(t, expectedSpec.Ports, svc.Spec.Ports)
 	assert.Equal(t, expectedSpec.Selector, svc.Spec.Selector)
 
+	// Verify specific port configuration using constants
+	assert.Len(t, svc.Spec.Ports, 1)
+	metricsPort := svc.Spec.Ports[0]
+	assert.Equal(t, PrincipalMetricsServicePortName, metricsPort.Name)
+	assert.Equal(t, int32(PrincipalMetricsServicePort), metricsPort.Port)
+	assert.Equal(t, intstr.FromInt(PrincipalMetricsServiceTargetPort), metricsPort.TargetPort)
+	assert.Equal(t, corev1.ProtocolTCP, metricsPort.Protocol)
+
+	// Verify Service type is LoadBalancer
+	assert.Equal(t, corev1.ServiceTypeLoadBalancer, svc.Spec.Type)
+
 	// Verify owner reference is set
 	assert.Len(t, svc.OwnerReferences, 1)
 	assert.Equal(t, cr.Name, svc.OwnerReferences[0].Name)
@@ -500,7 +522,7 @@ func TestReconcilePrincipalMetricsService_ServiceDoesNotExist_AgentNotSet(t *tes
 
 func TestReconcilePrincipalMetricsService_VerifyMetricsServiceSpec(t *testing.T) {
 	// Test case: Verify the metrics service spec has correct metrics-specific configuration
-	// Expected behavior: Should create service with metrics port (8000) and correct selector
+	// Expected behavior: Should create service with metrics port and correct selector
 
 	cr := makeTestArgoCD(withPrincipalEnabled(true))
 
@@ -526,6 +548,45 @@ func TestReconcilePrincipalMetricsService_VerifyMetricsServiceSpec(t *testing.T)
 	assert.Equal(t, int32(PrincipalMetricsServicePort), metricsPort.Port)
 	assert.Equal(t, intstr.FromInt(PrincipalMetricsServiceTargetPort), metricsPort.TargetPort)
 	assert.Equal(t, corev1.ProtocolTCP, metricsPort.Protocol)
+
+	// Verify Service type is LoadBalancer
+	assert.Equal(t, corev1.ServiceTypeLoadBalancer, svc.Spec.Type)
+
+	// Verify selector points to the correct component
+	expectedSelector := map[string]string{
+		common.ArgoCDKeyName: generateAgentResourceName(cr.Name, testCompName),
+	}
+	assert.Equal(t, expectedSelector, svc.Spec.Selector)
+}
+
+func TestReconcilePrincipalService_VerifyPrincipalServiceSpec(t *testing.T) {
+	// Test case: Verify the principal service spec has correct HTTPS port configuration
+	// Expected behavior: Should create service with HTTPS port (443) and correct selector
+
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	// Verify Service was created
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: cr.Namespace,
+	}, svc)
+	assert.NoError(t, err)
+
+	// Verify Service has correct HTTPS port configuration
+	assert.Len(t, svc.Spec.Ports, 1)
+	httpsPort := svc.Spec.Ports[0]
+	assert.Equal(t, PrincipalServicePortName, httpsPort.Name)
+	assert.Equal(t, int32(PrincipalServiceHTTPSPort), httpsPort.Port)
+	assert.Equal(t, intstr.FromInt(PrincipalServiceTargetPort), httpsPort.TargetPort)
+	assert.Equal(t, corev1.ProtocolTCP, httpsPort.Protocol)
 
 	// Verify Service type is LoadBalancer
 	assert.Equal(t, corev1.ServiceTypeLoadBalancer, svc.Spec.Type)

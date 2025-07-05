@@ -21,8 +21,6 @@ import (
 	"reflect"
 	"strconv"
 
-	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
-	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
+	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 )
 
 const (
@@ -107,7 +108,7 @@ const (
 
 func ReconcilePrincipalConfigMap(client client.Client, compName string, cr *argoproj.ArgoCD, scheme *runtime.Scheme) error {
 	cm := buildConfigMap(cr)
-	expectedData := buildData(client, cr)
+	expectedData := buildData(cr)
 
 	exists := true
 	if err := client.Get(context.TODO(), types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, cm); err != nil {
@@ -164,7 +165,7 @@ func buildConfigMap(cr *argoproj.ArgoCD) *corev1.ConfigMap {
 	}
 }
 
-func buildData(client client.Client, cr *argoproj.ArgoCD) map[string]string {
+func buildData(cr *argoproj.ArgoCD) map[string]string {
 	expectedData := make(map[string]string)
 
 	// Basic configuration

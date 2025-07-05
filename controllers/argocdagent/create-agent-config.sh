@@ -18,7 +18,7 @@ set -eo pipefail
 
 RECREATE="$1"
 
-export ARGOCD_AGENT_PRINCIPAL_NAMESPACE=jay # Same as ArgoCD instance namespace
+export ARGOCD_AGENT_PRINCIPAL_NAMESPACE=argocd # Same as ArgoCD instance namespace
 KUBECTL=$(which kubectl)
 OPENSSL=$(which openssl)
 

@@ -22,65 +22,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
-
-const (
-	testNamespace  = "argocd"
-	testArgoCDName = "argocd"
-	testCompName   = "principal"
-)
-
-func init() {
-	logf.SetLogger(zap.New(zap.UseDevMode(true)))
-}
-
-func makeTestArgoCD(opts ...func(*argoproj.ArgoCD)) *argoproj.ArgoCD {
-	a := &argoproj.ArgoCD{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      testArgoCDName,
-			Namespace: testNamespace,
-		},
-	}
-	for _, o := range opts {
-		o(a)
-	}
-	return a
-}
-
-func makeTestReconcilerScheme() *runtime.Scheme {
-	s := scheme.Scheme
-	_ = argoproj.AddToScheme(s)
-	return s
-}
-
-func makeTestReconcilerClient(sch *runtime.Scheme, resObjs []client.Object) client.Client {
-	client := fake.NewClientBuilder().WithScheme(sch)
-	if len(resObjs) > 0 {
-		client = client.WithObjects(resObjs...)
-	}
-	return client.Build()
-}
-
-func withPrincipalEnabled(enabled bool) func(*argoproj.ArgoCD) {
-	return func(a *argoproj.ArgoCD) {
-		if a.Spec.ArgoCDAgent == nil {
-			a.Spec.ArgoCDAgent = &argoproj.ArgoCDAgentSpec{}
-		}
-		if a.Spec.ArgoCDAgent.Principal == nil {
-			a.Spec.ArgoCDAgent.Principal = &argoproj.PrincipalSpec{}
-		}
-		a.Spec.ArgoCDAgent.Principal.Enabled = &enabled
-	}
-}
 
 func TestReconcilePrincipalConfigMap_ConfigMapDoesNotExist_PrincipalDisabled(t *testing.T) {
 	// Test case: ConfigMap doesn't exist and principal is disabled
@@ -131,7 +75,7 @@ func TestReconcilePrincipalConfigMap_ConfigMapDoesNotExist_PrincipalEnabled(t *t
 	assert.Equal(t, buildLabelsForAgentPrincipal(cr.Name), cm.Labels)
 
 	// Verify ConfigMap has expected data keys (sample check)
-	expectedData := buildData(cl, cr)
+	expectedData := buildData(cr)
 	assert.Equal(t, expectedData, cm.Data)
 
 	// Verify owner reference is set
@@ -156,7 +100,7 @@ func TestReconcilePrincipalConfigMap_ConfigMapExists_PrincipalDisabled(t *testin
 			Namespace: cr.Namespace,
 			Labels:    buildLabelsForAgentPrincipal(cr.Name),
 		},
-		Data: buildData(cl, cr),
+		Data: buildData(cr),
 	}
 
 	// Recreate client with all objects
@@ -184,7 +128,7 @@ func TestReconcilePrincipalConfigMap_ConfigMapExists_PrincipalEnabled_SameData(t
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, []client.Object{cr})
 
-	expectedData := buildData(cl, cr)
+	expectedData := buildData(cr)
 	existingCM := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name + "-agent-params",
@@ -245,7 +189,7 @@ func TestReconcilePrincipalConfigMap_ConfigMapExists_PrincipalEnabled_DifferentD
 	}, cm)
 	assert.NoError(t, err)
 
-	expectedData := buildData(cl, cr)
+	expectedData := buildData(cr)
 	assert.Equal(t, expectedData, cm.Data)
 	assert.NotEqual(t, oldData, cm.Data)
 }
@@ -265,7 +209,7 @@ func TestReconcilePrincipalConfigMap_ConfigMapExists_PrincipalNotSet(t *testing.
 			Namespace: cr.Namespace,
 			Labels:    buildLabelsForAgentPrincipal(cr.Name),
 		},
-		Data: buildData(cl, cr),
+		Data: buildData(cr),
 	}
 
 	// Recreate client with all objects

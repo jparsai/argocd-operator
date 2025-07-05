@@ -17,11 +17,8 @@ package argocdagent
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 
-	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
-	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiError "k8s.io/apimachinery/pkg/api/errors"
@@ -30,6 +27,9 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
+	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 )
 
 func ReconcilePrincipalDeployment(client client.Client, compName, saName string, cr *argoproj.ArgoCD, scheme *runtime.Scheme) error {
@@ -99,7 +99,7 @@ func buildPrincipalSpec(compName, saName string, cr *argoproj.ArgoCD) appsv1.Dep
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
 					{
-						Image:           buildPrincipalImage(),
+						Image:           buildPrincipalImage(cr),
 						ImagePullPolicy: corev1.PullAlways,
 						Name:            generateAgentResourceName(cr.Name, compName),
 						Env:             buildPrincipalContainerEnv(),
@@ -410,12 +410,13 @@ func buildArgs() []string {
 	return args
 }
 
-func buildPrincipalImage() string {
-	image := os.Getenv("ARGOCD_AGENT_PRINCIPAL_IMAGE")
-	if image == "" {
-		image = "quay.io/argoproj/argocd-agent:v1"
+func buildPrincipalImage(cr *argoproj.ArgoCD) string {
+	if cr.Spec.ArgoCDAgent != nil &&
+		cr.Spec.ArgoCDAgent.Principal != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Image != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Image
 	}
-	return image
+	return "quay.io/argoproj/argocd-agent:v1"
 }
 
 func updateDeploymentIfChanged(compName, saName string, cr *argoproj.ArgoCD, deployment *appsv1.Deployment) (*appsv1.Deployment, bool) {
@@ -427,10 +428,10 @@ func updateDeploymentIfChanged(compName, saName string, cr *argoproj.ArgoCD, dep
 		deployment.Spec.Selector = buildSelector(cr)
 	}
 
-	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Image, buildPrincipalImage()) {
+	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Image, buildPrincipalImage(cr)) {
 		log.Info("deployment image is being updated")
 		changed = true
-		deployment.Spec.Template.Spec.Containers[0].Image = buildPrincipalImage()
+		deployment.Spec.Template.Spec.Containers[0].Image = buildPrincipalImage(cr)
 	}
 
 	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Name, generateAgentResourceName(cr.Name, compName)) {

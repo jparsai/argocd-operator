@@ -18,13 +18,14 @@ import (
 	"context"
 	"fmt"
 
-	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
-	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
+	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 )
 
 func ReconcileAppProject(client client.Client, compName string, cr *argoproj.ArgoCD, scheme *runtime.Scheme) error {

@@ -448,6 +448,9 @@ spec:
                         description: Enabled is the flag to enable the Principal component
                           during ArgoCD installation. (optional, default `false`)
                         type: boolean
+                      image:
+                        description: Image is the name of Argo CD Agent image
+                        type: string
                       jwt-allow-generate:
                         description: JWTAllowGenerate is the flag to enable the JWT
                           generation during ArgoCD installation.
@@ -9678,6 +9681,9 @@ spec:
                         description: Enabled is the flag to enable the Principal component
                           during ArgoCD installation. (optional, default `false`)
                         type: boolean
+                      image:
+                        description: Image is the name of Argo CD Agent image
+                        type: string
                       jwt-allow-generate:
                         description: JWTAllowGenerate is the flag to enable the JWT
                           generation during ArgoCD installation.

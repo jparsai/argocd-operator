@@ -16,7 +16,6 @@ package argocdagent
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,24 +24,58 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
 
-const (
-	testSAName = "test-service-account"
-)
+// Helper function to create a test deployment
+func makeTestDeployment(cr *argoproj.ArgoCD) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      generateAgentResourceName(cr.Name, testCompName),
+			Namespace: cr.Namespace,
+			Labels:    buildLabelsForAgentPrincipal(cr.Name),
+		},
+		Spec: buildPrincipalSpec(testCompName, generateAgentResourceName(cr.Name, testCompName), cr),
+	}
+}
+
+// Helper function to create a test deployment with custom image
+func makeTestDeploymentWithCustomImage(cr *argoproj.ArgoCD, customImage string) *appsv1.Deployment {
+	deployment := makeTestDeployment(cr)
+	deployment.Spec.Template.Spec.Containers[0].Image = customImage
+	return deployment
+}
+
+// Helper function to create ArgoCD with custom principal image
+func withPrincipalImage(image string) argoCDOpt {
+	return func(a *argoproj.ArgoCD) {
+		if a.Spec.ArgoCDAgent == nil {
+			a.Spec.ArgoCDAgent = &argoproj.ArgoCDAgentSpec{}
+		}
+		if a.Spec.ArgoCDAgent.Principal == nil {
+			a.Spec.ArgoCDAgent.Principal = &argoproj.PrincipalSpec{}
+		}
+		a.Spec.ArgoCDAgent.Principal.Image = image
+	}
+}
+
+// TestReconcilePrincipalDeployment tests
 
 func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_PrincipalDisabled(t *testing.T) {
 	// Test case: Deployment doesn't exist and principal is disabled
 	// Expected behavior: Should do nothing (no creation, no error)
 
 	cr := makeTestArgoCD(withPrincipalEnabled(false))
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
 	resObjs := []client.Object{cr}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment was not created
@@ -59,12 +92,13 @@ func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_PrincipalEnabled(t 
 	// Expected behavior: Should create the Deployment with expected spec
 
 	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
 	resObjs := []client.Object{cr}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment was created
@@ -76,24 +110,24 @@ func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_PrincipalEnabled(t 
 	assert.NoError(t, err)
 
 	// Verify Deployment has expected metadata
-	expectedName := generateAgentResourceName(cr.Name, testCompName)
-	assert.Equal(t, expectedName, deployment.Name)
+	assert.Equal(t, generateAgentResourceName(cr.Name, testCompName), deployment.Name)
 	assert.Equal(t, cr.Namespace, deployment.Namespace)
 	assert.Equal(t, buildLabelsForAgentPrincipal(cr.Name), deployment.Labels)
 
 	// Verify Deployment has expected spec
-	expectedSpec := buildPrincipalSpec(testCompName, testSAName, cr)
+	expectedSpec := buildPrincipalSpec(testCompName, saName, cr)
 	assert.Equal(t, expectedSpec.Selector, deployment.Spec.Selector)
-	assert.Equal(t, expectedSpec.Template.Labels, deployment.Spec.Template.Labels)
+	assert.Equal(t, expectedSpec.Template.ObjectMeta.Labels, deployment.Spec.Template.ObjectMeta.Labels)
 	assert.Equal(t, expectedSpec.Template.Spec.ServiceAccountName, deployment.Spec.Template.Spec.ServiceAccountName)
-	assert.Len(t, deployment.Spec.Template.Spec.Containers, 1)
 
-	// Verify container spec
+	// Verify container configuration
+	assert.Len(t, deployment.Spec.Template.Spec.Containers, 1)
 	container := deployment.Spec.Template.Spec.Containers[0]
-	assert.Equal(t, buildPrincipalImage(), container.Image)
 	assert.Equal(t, generateAgentResourceName(cr.Name, testCompName), container.Name)
-	assert.Equal(t, buildPrincipalContainerEnv(), container.Env)
+	assert.Equal(t, buildPrincipalImage(cr), container.Image)
+	assert.Equal(t, corev1.PullAlways, container.ImagePullPolicy)
 	assert.Equal(t, buildArgs(), container.Args)
+	assert.Equal(t, buildPrincipalContainerEnv(), container.Env)
 	assert.Equal(t, buildSecurityContext(), container.SecurityContext)
 	assert.Equal(t, buildPorts(), container.Ports)
 
@@ -108,22 +142,16 @@ func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalDisabled(t *test
 	// Expected behavior: Should delete the Deployment
 
 	cr := makeTestArgoCD(withPrincipalEnabled(false))
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
 	// Create existing Deployment
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: buildPrincipalSpec(testCompName, testSAName, cr),
-	}
+	existingDeployment := makeTestDeployment(cr)
 
 	resObjs := []client.Object{cr, existingDeployment}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment was deleted
@@ -135,27 +163,21 @@ func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalDisabled(t *test
 	assert.True(t, errors.IsNotFound(err))
 }
 
-func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_SameSpec(t *testing.T) {
-	// Test case: Deployment exists, principal is enabled, and spec is the same
-	// Expected behavior: Should do nothing (no update)
+func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_NoChanges(t *testing.T) {
+	// Test case: Deployment exists, principal is enabled, and no changes are needed
+	// Expected behavior: Should not update the Deployment
 
 	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
-	expectedSpec := buildPrincipalSpec(testCompName, testSAName, cr)
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: expectedSpec,
-	}
+	// Create existing Deployment with correct spec
+	existingDeployment := makeTestDeployment(cr)
 
 	resObjs := []client.Object{cr, existingDeployment}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment still exists with same spec
@@ -165,101 +187,81 @@ func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_SameSpec
 		Namespace: cr.Namespace,
 	}, deployment)
 	assert.NoError(t, err)
-	assert.Equal(t, expectedSpec.Selector, deployment.Spec.Selector)
-	assert.Equal(t, expectedSpec.Template.Spec.ServiceAccountName, deployment.Spec.Template.Spec.ServiceAccountName)
+	assert.Equal(t, buildPrincipalImage(cr), deployment.Spec.Template.Spec.Containers[0].Image)
+	assert.Equal(t, saName, deployment.Spec.Template.Spec.ServiceAccountName)
 }
 
-func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_DifferentSpec(t *testing.T) {
-	// Test case: Deployment exists, principal is enabled, but spec is different
-	// Expected behavior: Should update the Deployment with expected spec
+func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_ImageChanged(t *testing.T) {
+	// Test case: Deployment exists, principal is enabled, but image has changed
+	// Expected behavior: Should update the Deployment with new image
 
-	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withPrincipalImage("quay.io/argoproj/argocd-agent:v2"))
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
-	// Create existing Deployment with different spec
-	differentSpec := appsv1.DeploymentSpec{
-		Selector: &metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				"app": "different-app", // Different selector
-			},
-		},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					"app": "different-app",
-				},
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name:  "different-container",
-						Image: "different-image:tag",
-					},
-				},
-				ServiceAccountName: "different-sa",
-			},
-		},
-	}
-
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: differentSpec,
-	}
+	// Create existing Deployment with old image
+	existingDeployment := makeTestDeploymentWithCustomImage(cr, "quay.io/argoproj/argocd-agent:v1")
 
 	resObjs := []client.Object{cr, existingDeployment}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
-	// Verify Deployment was updated with expected spec
+	// Verify Deployment was updated with new image
 	deployment := &appsv1.Deployment{}
 	err = cl.Get(context.TODO(), types.NamespacedName{
 		Name:      generateAgentResourceName(cr.Name, testCompName),
 		Namespace: cr.Namespace,
 	}, deployment)
 	assert.NoError(t, err)
-
-	expectedSpec := buildPrincipalSpec(testCompName, testSAName, cr)
-	assert.Equal(t, expectedSpec.Selector, deployment.Spec.Selector)
-	assert.Equal(t, expectedSpec.Template.Spec.ServiceAccountName, deployment.Spec.Template.Spec.ServiceAccountName)
-	assert.NotEqual(t, differentSpec.Selector, deployment.Spec.Selector)
-	assert.NotEqual(t, differentSpec.Template.Spec.ServiceAccountName, deployment.Spec.Template.Spec.ServiceAccountName)
-
-	// Verify container was updated
-	assert.Len(t, deployment.Spec.Template.Spec.Containers, 1)
-	container := deployment.Spec.Template.Spec.Containers[0]
-	assert.Equal(t, buildPrincipalImage(), container.Image)
-	assert.Equal(t, generateAgentResourceName(cr.Name, testCompName), container.Name)
-	assert.NotEqual(t, "different-image:tag", container.Image)
-	assert.NotEqual(t, "different-container", container.Name)
+	assert.Equal(t, "quay.io/argoproj/argocd-agent:v2", deployment.Spec.Template.Spec.Containers[0].Image)
 }
 
-func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalNotSet(t *testing.T) {
-	// Test case: Deployment exists but principal is not configured (nil)
-	// Expected behavior: Should delete the Deployment (default behavior when not enabled)
+func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalEnabled_ServiceAccountChanged(t *testing.T) {
+	// Test case: Deployment exists, principal is enabled, but service account has changed
+	// Expected behavior: Should update the Deployment with new service account
 
-	cr := makeTestArgoCD() // No principal configuration
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	oldSAName := "old-service-account"
+	newSAName := "new-service-account"
 
-	// Create existing Deployment
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: buildPrincipalSpec(testCompName, testSAName, cr),
-	}
+	// Create existing Deployment with old service account
+	existingDeployment := makeTestDeployment(cr)
+	existingDeployment.Spec.Template.Spec.ServiceAccountName = oldSAName
 
 	resObjs := []client.Object{cr, existingDeployment}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, newSAName, cr, sch)
+	assert.NoError(t, err)
+
+	// Verify Deployment was updated with new service account
+	deployment := &appsv1.Deployment{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: cr.Namespace,
+	}, deployment)
+	assert.NoError(t, err)
+	assert.Equal(t, newSAName, deployment.Spec.Template.Spec.ServiceAccountName)
+}
+
+func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalNotSet(t *testing.T) {
+	// Test case: Deployment exists but principal is not set (nil)
+	// Expected behavior: Should delete the Deployment
+
+	cr := makeTestArgoCD() // No principal configuration
+	saName := generateAgentResourceName(cr.Name, testCompName)
+
+	// Create existing Deployment
+	existingDeployment := makeTestDeployment(cr)
+
+	resObjs := []client.Object{cr, existingDeployment}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment was deleted
@@ -272,16 +274,17 @@ func TestReconcilePrincipalDeployment_DeploymentExists_PrincipalNotSet(t *testin
 }
 
 func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_AgentNotSet(t *testing.T) {
-	// Test case: Deployment doesn't exist and agent is not configured (nil)
-	// Expected behavior: Should do nothing (no creation, no error)
+	// Test case: Deployment doesn't exist and ArgoCDAgent is not set (nil)
+	// Expected behavior: Should do nothing since principal is effectively disabled
 
 	cr := makeTestArgoCD() // No agent configuration
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
 	resObjs := []client.Object{cr}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
 	// Verify Deployment was not created
@@ -293,82 +296,47 @@ func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_AgentNotSet(t *test
 	assert.True(t, errors.IsNotFound(err))
 }
 
-func TestReconcilePrincipalDeployment_ImageUpdate(t *testing.T) {
-	// Test case: Deployment exists with different image, should update
+func TestReconcilePrincipalDeployment_DeploymentExists_AgentNotSet(t *testing.T) {
+	// Test case: Deployment exists but ArgoCDAgent is not set (nil)
+	// Expected behavior: Should delete the Deployment
 
-	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	cr := makeTestArgoCD() // No agent configuration
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
-	// Set environment variable for image
-	originalImage := os.Getenv("ARGOCD_AGENT_PRINCIPAL_IMAGE")
-	defer func() {
-		if originalImage != "" {
-			os.Setenv("ARGOCD_AGENT_PRINCIPAL_IMAGE", originalImage)
-		} else {
-			os.Unsetenv("ARGOCD_AGENT_PRINCIPAL_IMAGE")
-		}
-	}()
-	os.Setenv("ARGOCD_AGENT_PRINCIPAL_IMAGE", "new-image:v2")
-
-	// Create existing Deployment with old image
-	existingSpec := buildPrincipalSpec(testCompName, testSAName, cr)
-	existingSpec.Template.Spec.Containers[0].Image = "old-image:v1"
-
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: existingSpec,
-	}
+	// Create existing Deployment
+	existingDeployment := makeTestDeployment(cr)
 
 	resObjs := []client.Object{cr, existingDeployment}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, testSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
-	// Verify Deployment was updated with new image
+	// Verify Deployment was deleted
 	deployment := &appsv1.Deployment{}
 	err = cl.Get(context.TODO(), types.NamespacedName{
 		Name:      generateAgentResourceName(cr.Name, testCompName),
 		Namespace: cr.Namespace,
 	}, deployment)
-	assert.NoError(t, err)
-
-	assert.Len(t, deployment.Spec.Template.Spec.Containers, 1)
-	container := deployment.Spec.Template.Spec.Containers[0]
-	assert.Equal(t, "new-image:v2", container.Image)
-	assert.NotEqual(t, "old-image:v1", container.Image)
+	assert.True(t, errors.IsNotFound(err))
 }
 
-func TestReconcilePrincipalDeployment_ServiceAccountNameUpdate(t *testing.T) {
-	// Test case: Deployment exists with different service account name, should update
+func TestReconcilePrincipalDeployment_VerifyDeploymentSpec(t *testing.T) {
+	// Test case: Verify the deployment spec has correct configuration
+	// Expected behavior: Should create deployment with correct security context, ports, etc.
 
 	cr := makeTestArgoCD(withPrincipalEnabled(true))
-	newSAName := "new-service-account"
+	saName := generateAgentResourceName(cr.Name, testCompName)
 
-	// Create existing Deployment with old service account
-	existingSpec := buildPrincipalSpec(testCompName, testSAName, cr)
-
-	existingDeployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name, testCompName),
-			Namespace: cr.Namespace,
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-		},
-		Spec: existingSpec,
-	}
-
-	resObjs := []client.Object{cr, existingDeployment}
+	resObjs := []client.Object{cr}
 	sch := makeTestReconcilerScheme()
 	cl := makeTestReconcilerClient(sch, resObjs)
 
-	err := ReconcilePrincipalDeployment(cl, testCompName, newSAName, cr, sch)
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
 	assert.NoError(t, err)
 
-	// Verify Deployment was updated with new service account name
+	// Verify Deployment was created
 	deployment := &appsv1.Deployment{}
 	err = cl.Get(context.TODO(), types.NamespacedName{
 		Name:      generateAgentResourceName(cr.Name, testCompName),
@@ -376,6 +344,81 @@ func TestReconcilePrincipalDeployment_ServiceAccountNameUpdate(t *testing.T) {
 	}, deployment)
 	assert.NoError(t, err)
 
-	assert.Equal(t, newSAName, deployment.Spec.Template.Spec.ServiceAccountName)
-	assert.NotEqual(t, testSAName, deployment.Spec.Template.Spec.ServiceAccountName)
+	// Verify security context
+	container := deployment.Spec.Template.Spec.Containers[0]
+	assert.Equal(t, ptr.To(false), container.SecurityContext.AllowPrivilegeEscalation)
+	assert.Equal(t, ptr.To(true), container.SecurityContext.ReadOnlyRootFilesystem)
+	assert.Equal(t, ptr.To(true), container.SecurityContext.RunAsNonRoot)
+	assert.Equal(t, []corev1.Capability{"ALL"}, container.SecurityContext.Capabilities.Drop)
+	assert.Equal(t, corev1.SeccompProfileType("RuntimeDefault"), container.SecurityContext.SeccompProfile.Type)
+
+	// Verify ports configuration
+	assert.Len(t, container.Ports, 2)
+	principalPort := container.Ports[0]
+	assert.Equal(t, "principal", principalPort.Name)
+	assert.Equal(t, int32(8443), principalPort.ContainerPort)
+	metricsPort := container.Ports[1]
+	assert.Equal(t, "metrics", metricsPort.Name)
+	assert.Equal(t, int32(8000), metricsPort.ContainerPort)
+
+	// Verify args
+	assert.Equal(t, []string{"principal"}, container.Args)
+
+	// Verify environment variables are set from ConfigMap
+	assert.True(t, len(container.Env) > 0)
+	// Check that environment variables reference the correct ConfigMap
+	for _, env := range container.Env {
+		if env.ValueFrom != nil && env.ValueFrom.ConfigMapKeyRef != nil {
+			assert.Equal(t, "argocd-agent-params", env.ValueFrom.ConfigMapKeyRef.Name)
+		}
+	}
+}
+
+func TestReconcilePrincipalDeployment_CustomImage(t *testing.T) {
+	// Test case: Verify custom image is used when specified
+	// Expected behavior: Should create deployment with custom image
+
+	customImage := "custom-registry/argocd-agent:custom-tag"
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withPrincipalImage(customImage))
+	saName := generateAgentResourceName(cr.Name, testCompName)
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
+	assert.NoError(t, err)
+
+	// Verify Deployment was created with custom image
+	deployment := &appsv1.Deployment{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: cr.Namespace,
+	}, deployment)
+	assert.NoError(t, err)
+	assert.Equal(t, customImage, deployment.Spec.Template.Spec.Containers[0].Image)
+}
+
+func TestReconcilePrincipalDeployment_DefaultImage(t *testing.T) {
+	// Test case: Verify default image is used when no custom image is specified
+	// Expected behavior: Should create deployment with default image
+
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	saName := generateAgentResourceName(cr.Name, testCompName)
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalDeployment(cl, testCompName, saName, cr, sch)
+	assert.NoError(t, err)
+
+	// Verify Deployment was created with default image
+	deployment := &appsv1.Deployment{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: cr.Namespace,
+	}, deployment)
+	assert.NoError(t, err)
+	assert.Equal(t, "quay.io/argoproj/argocd-agent:v1", deployment.Spec.Template.Spec.Containers[0].Image)
 }

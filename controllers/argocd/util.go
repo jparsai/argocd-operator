@@ -756,11 +756,6 @@ func (r *ReconcileArgoCD) reconcileResources(cr *argoproj.ArgoCD) error {
 		if err := argocdagent.ReconcileAppProject(r.Client, cr.Name, cr, r.Scheme); err != nil {
 			return err
 		}
-
-		log.Info("reconciling ArgoCD Agent redis secret")
-		if err := argocdagent.ReconcileRedisSecret(r.Client, cr, r.Scheme); err != nil {
-			return err
-		}
 	}
 
 	log.Info("reconciling SSO")

@@ -22,9 +22,63 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	argoproj "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
+
+// Test constants
+const (
+	testCompName   = "principal"
+	testNamespace  = "argocd"
+	testArgoCDName = "argocd"
+)
+
+// Test helper functions
+type argoCDOpt func(*argoproj.ArgoCD)
+
+func makeTestArgoCD(opts ...argoCDOpt) *argoproj.ArgoCD {
+	a := &argoproj.ArgoCD{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testArgoCDName,
+			Namespace: testNamespace,
+		},
+	}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
+}
+
+func withPrincipalEnabled(enabled bool) argoCDOpt {
+	return func(a *argoproj.ArgoCD) {
+		if a.Spec.ArgoCDAgent == nil {
+			a.Spec.ArgoCDAgent = &argoproj.ArgoCDAgentSpec{}
+		}
+		if a.Spec.ArgoCDAgent.Principal == nil {
+			a.Spec.ArgoCDAgent.Principal = &argoproj.PrincipalSpec{}
+		}
+		a.Spec.ArgoCDAgent.Principal.Enabled = &enabled
+	}
+}
+
+func makeTestReconcilerScheme() *runtime.Scheme {
+	s := scheme.Scheme
+	_ = argoproj.AddToScheme(s)
+	return s
+}
+
+func makeTestReconcilerClient(sch *runtime.Scheme, resObjs []client.Object) client.Client {
+	client := fake.NewClientBuilder().WithScheme(sch)
+	if len(resObjs) > 0 {
+		client = client.WithObjects(resObjs...)
+	}
+	return client.Build()
+}
 
 // TestReconcilePrincipalServiceAccount tests
 

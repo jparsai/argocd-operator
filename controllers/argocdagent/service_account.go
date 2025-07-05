@@ -27,7 +27,10 @@ import (
 	"github.com/argoproj-labs/argocd-operator/controllers/argoutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logr "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logr.Log.WithName("controller_agent")
 
 func ReconcilePrincipalServiceAccount(client client.Client, compName string, cr *argoproj.ArgoCD, scheme *runtime.Scheme) (*corev1.ServiceAccount, error) {
 	sa := buildServiceAccount(compName, cr)
@@ -74,5 +77,18 @@ func buildServiceAccount(compName string, cr *argoproj.ArgoCD) *corev1.ServiceAc
 			Namespace: cr.Namespace,
 			Labels:    buildLabelsForAgentPrincipal(cr.Name),
 		},
+	}
+}
+
+func generateAgentResourceName(crName, compName string) string {
+	return fmt.Sprintf("%s-agent-%s", crName, compName)
+}
+
+func buildLabelsForAgentPrincipal(crName string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/component":  "principal",
+		"app.kubernetes.io/name":       "argocd-agent-principal",
+		"app.kubernetes.io/part-of":    "argocd-agent",
+		"app.kubernetes.io/managed-by": crName,
 	}
 }

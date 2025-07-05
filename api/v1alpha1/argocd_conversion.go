@@ -729,6 +729,7 @@ func ConvertAlphaToBetaPrincipal(src *PrincipalSpec) *v1beta1.PrincipalSpec {
 			JWTAllowGenerate:  src.JWTAllowGenerate,
 			Auth:              src.Auth,
 			LogLevel:          src.LogLevel,
+			Image:             src.Image,
 		}
 	}
 	return dst
@@ -753,6 +754,7 @@ func ConvertBetaToAlphaPrincipal(src *v1beta1.PrincipalSpec) *PrincipalSpec {
 			JWTAllowGenerate:  src.JWTAllowGenerate,
 			Auth:              src.Auth,
 			LogLevel:          src.LogLevel,
+			Image:             src.Image,
 		}
 	}
 	return dst

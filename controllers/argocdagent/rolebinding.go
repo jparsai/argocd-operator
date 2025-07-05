@@ -176,9 +176,8 @@ func buildRoleBinding(compName string, cr *argoproj.ArgoCD) *v1.RoleBinding {
 func buildClusterRoleBinding(compName string, cr *argoproj.ArgoCD) *v1.ClusterRoleBinding {
 	return &v1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      generateAgentResourceName(cr.Name+"-"+cr.Namespace, compName),
-			Labels:    buildLabelsForAgentPrincipal(cr.Name),
-			Namespace: cr.Namespace,
+			Name:   generateAgentResourceName(cr.Name+"-"+cr.Namespace, compName),
+			Labels: buildLabelsForAgentPrincipal(cr.Name),
 		},
 	}
 }
