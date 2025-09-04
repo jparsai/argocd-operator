@@ -527,7 +527,9 @@ func TestAlphaToBetaConversion(t *testing.T) {
 				cr.Spec.ArgoCDAgent = &ArgoCDAgentSpec{
 					Principal: &PrincipalSpec{
 						Enabled: &enabled,
-						Auth:    "mtls:CN=([^,]+)",
+						Server: &PrincipalServerSpec{
+							Auth: "mtls:CN=([^,]+)",
+						},
 					},
 				}
 			}),
@@ -536,7 +538,9 @@ func TestAlphaToBetaConversion(t *testing.T) {
 				cr.Spec.ArgoCDAgent = &v1beta1.ArgoCDAgentSpec{
 					Principal: &v1beta1.PrincipalSpec{
 						Enabled: &enabled,
-						Auth:    "mtls:CN=([^,]+)",
+						Server: &v1beta1.PrincipalServerSpec{
+							Auth: "mtls:CN=([^,]+)",
+						},
 					},
 				}
 			}),
@@ -546,66 +550,64 @@ func TestAlphaToBetaConversion(t *testing.T) {
 			input: makeTestArgoCDAlpha(func(cr *ArgoCD) {
 				enabled := true
 				enableWebSocket := true
-				createNamespace := true
+				enableNamespaceCreate := true
+				insecureGenerate := true
 				allowGenerate := true
 				require := true
 				matchSubject := true
 				enableProxy := true
 				cr.Spec.ArgoCDAgent = &ArgoCDAgentSpec{
 					Principal: &PrincipalSpec{
-						Enabled:              &enabled,
-						Auth:                 "mtls:CN=([^,]+)",
-						MetricsPort:          8000,
-						PprofPort:            6060,
-						HealthzPort:          8003,
-						ListenHost:           "0.0.0.0",
-						ListenPort:           8443,
-						EnableWebSocket:      &enableWebSocket,
-						LogLevel:             "info",
-						LogFormat:            "text",
-						Image:                "quay.io/user/argocd-agent:v1",
-						KeepAliveMinInterval: "30s",
+						Enabled: &enabled,
+						Server: &PrincipalServerSpec{
+							Auth:                 "mtls:CN=([^,]+)",
+							MetricsPort:          8000,
+							PprofPort:            6060,
+							HealthzPort:          8003,
+							ListenHost:           "0.0.0.0",
+							ListenPort:           8443,
+							EnableWebSocket:      &enableWebSocket,
+							LogLevel:             "info",
+							LogFormat:            "text",
+							Image:                "quay.io/user/argocd-agent:v1",
+							KeepAliveMinInterval: "30s",
+						},
 						Redis: &PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
 							CompressionType: "gzip",
 						},
 						Namespace: &PrincipalNamespaceSpec{
 							AllowedNamespaces:      []string{"*"},
-							CreateNamespace:        &createNamespace,
+							EnableNamespaceCreate:  &enableNamespaceCreate,
 							NamespaceCreatePattern: "agent-.*",
 							NamespaceCreateLabels:  []string{"environment=agent"},
 						},
 						TLS: &PrincipalTLSSpec{
-							SecretName: "tls-secret",
 							Server: &PrincipalTLSServerSpec{
-								AllowGenerate:    &allowGenerate,
-								CertPath:         "/path/to/cert",
-								KeyPath:          "/path/to/key",
-								RootCASecretName: "ca-secret",
-								RootCAPath:       "/path/to/ca",
+								SecretName:    "tls-secret",
+								AllowGenerate: &allowGenerate,
+								CertPath:      "/path/to/cert",
+								KeyPath:       "/path/to/key",
 							},
 							Client: &PrincipalTLSClientSpec{
-								Require:      &require,
-								MatchSubject: &matchSubject,
+								RequireClientCert:  &require,
+								ClientMatchSubject: &matchSubject,
+								RootCAPath:         "/path/to/ca",
+								RootCASecretName:   "ca-secret",
 							},
 						},
 						ResourceProxy: &PrincipalResourceProxySpec{
-							Enable:     &enableProxy,
-							SecretName: "proxy-secret",
-							TLS: &PrincipalResourceProxyTLSSpec{
-								CertPath: "/path/to/proxy-cert",
-								KeyPath:  "/path/to/proxy-key",
-								CAPath:   "/path/to/proxy-ca",
-							},
-							CA: &PrincipalResourceProxyCASpec{
-								SecretName: "proxy-ca-secret",
-								CAPath:     "/path/to/proxy-ca",
-							},
+							Enable:       &enableProxy,
+							SecretName:   "proxy-secret",
+							TLSCertPath:  "/path/to/proxy-cert",
+							TLSKeyPath:   "/path/to/proxy-key",
+							TLSCAPath:    "/path/to/proxy-ca",
+							CASecretName: "proxy-ca-secret",
 						},
 						JWT: &PrincipalJWTSpec{
-							AllowGenerate: &allowGenerate,
-							SecretName:    "jwt-secret",
-							KeyPath:       "/path/to/key",
+							InsecureGenerate: &insecureGenerate,
+							SecretName:       "jwt-secret",
+							Key:              "/path/to/key",
 						},
 					},
 				}
@@ -613,66 +615,64 @@ func TestAlphaToBetaConversion(t *testing.T) {
 			expectedOutput: makeTestArgoCDBeta(func(cr *v1beta1.ArgoCD) {
 				enabled := true
 				enableWebSocket := true
-				createNamespace := true
+				enableNamespaceCreate := true
 				allowGenerate := true
+				insecureGenerate := true
 				require := true
 				matchSubject := true
 				enableProxy := true
 				cr.Spec.ArgoCDAgent = &v1beta1.ArgoCDAgentSpec{
 					Principal: &v1beta1.PrincipalSpec{
-						Enabled:              &enabled,
-						Auth:                 "mtls:CN=([^,]+)",
-						MetricsPort:          8000,
-						PprofPort:            6060,
-						HealthzPort:          8003,
-						ListenHost:           "0.0.0.0",
-						ListenPort:           8443,
-						EnableWebSocket:      &enableWebSocket,
-						LogLevel:             "info",
-						LogFormat:            "text",
-						Image:                "quay.io/user/argocd-agent:v1",
-						KeepAliveMinInterval: "30s",
+						Enabled: &enabled,
+						Server: &v1beta1.PrincipalServerSpec{
+							Auth:                 "mtls:CN=([^,]+)",
+							MetricsPort:          8000,
+							PprofPort:            6060,
+							HealthzPort:          8003,
+							ListenHost:           "0.0.0.0",
+							ListenPort:           8443,
+							EnableWebSocket:      &enableWebSocket,
+							LogLevel:             "info",
+							LogFormat:            "text",
+							KeepAliveMinInterval: "30s",
+							Image:                "quay.io/user/argocd-agent:v1",
+						},
 						Redis: &v1beta1.PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
 							CompressionType: "gzip",
 						},
 						Namespace: &v1beta1.PrincipalNamespaceSpec{
 							AllowedNamespaces:      []string{"*"},
-							CreateNamespace:        &createNamespace,
+							EnableNamespaceCreate:  &enableNamespaceCreate,
 							NamespaceCreatePattern: "agent-.*",
 							NamespaceCreateLabels:  []string{"environment=agent"},
 						},
 						TLS: &v1beta1.PrincipalTLSSpec{
-							SecretName: "tls-secret",
 							Server: &v1beta1.PrincipalTLSServerSpec{
-								AllowGenerate:    &allowGenerate,
-								CertPath:         "/path/to/cert",
-								KeyPath:          "/path/to/key",
-								RootCASecretName: "ca-secret",
-								RootCAPath:       "/path/to/ca",
+								SecretName:    "tls-secret",
+								AllowGenerate: &allowGenerate,
+								CertPath:      "/path/to/cert",
+								KeyPath:       "/path/to/key",
 							},
 							Client: &v1beta1.PrincipalTLSClientSpec{
-								Require:      &require,
-								MatchSubject: &matchSubject,
+								RequireClientCert:  &require,
+								ClientMatchSubject: &matchSubject,
+								RootCAPath:         "/path/to/ca",
+								RootCASecretName:   "ca-secret",
 							},
 						},
 						ResourceProxy: &v1beta1.PrincipalResourceProxySpec{
-							Enable:     &enableProxy,
-							SecretName: "proxy-secret",
-							TLS: &v1beta1.PrincipalResourceProxyTLSSpec{
-								CertPath: "/path/to/proxy-cert",
-								KeyPath:  "/path/to/proxy-key",
-								CAPath:   "/path/to/proxy-ca",
-							},
-							CA: &v1beta1.PrincipalResourceProxyCASpec{
-								SecretName: "proxy-ca-secret",
-								CAPath:     "/path/to/proxy-ca",
-							},
+							Enable:       &enableProxy,
+							SecretName:   "proxy-secret",
+							TLSCertPath:  "/path/to/proxy-cert",
+							TLSKeyPath:   "/path/to/proxy-key",
+							TLSCAPath:    "/path/to/proxy-ca",
+							CASecretName: "proxy-ca-secret",
 						},
 						JWT: &v1beta1.PrincipalJWTSpec{
-							AllowGenerate: &allowGenerate,
-							SecretName:    "jwt-secret",
-							KeyPath:       "/path/to/key",
+							InsecureGenerate: &insecureGenerate,
+							SecretName:       "jwt-secret",
+							Key:              "/path/to/key",
 						},
 					},
 				}
@@ -802,7 +802,9 @@ func TestBetaToAlphaConversion(t *testing.T) {
 				cr.Spec.ArgoCDAgent = &v1beta1.ArgoCDAgentSpec{
 					Principal: &v1beta1.PrincipalSpec{
 						Enabled: &enabled,
-						Auth:    "mtls:CN=([^,]+)",
+						Server: &v1beta1.PrincipalServerSpec{
+							Auth: "mtls:CN=([^,]+)",
+						},
 					},
 				}
 			}),
@@ -811,7 +813,9 @@ func TestBetaToAlphaConversion(t *testing.T) {
 				cr.Spec.ArgoCDAgent = &ArgoCDAgentSpec{
 					Principal: &PrincipalSpec{
 						Enabled: &enabled,
-						Auth:    "mtls:CN=([^,]+)",
+						Server: &PrincipalServerSpec{
+							Auth: "mtls:CN=([^,]+)",
+						},
 					},
 				}
 			}),
@@ -821,66 +825,64 @@ func TestBetaToAlphaConversion(t *testing.T) {
 			input: makeTestArgoCDBeta(func(cr *v1beta1.ArgoCD) {
 				enabled := true
 				enableWebSocket := true
-				createNamespace := true
+				enableNamespaceCreate := true
 				allowGenerate := true
+				insecureGenerate := true
 				require := true
 				matchSubject := true
 				enableProxy := true
 				cr.Spec.ArgoCDAgent = &v1beta1.ArgoCDAgentSpec{
 					Principal: &v1beta1.PrincipalSpec{
-						Enabled:              &enabled,
-						Auth:                 "mtls:CN=([^,]+)",
-						MetricsPort:          8000,
-						PprofPort:            6060,
-						HealthzPort:          8003,
-						ListenHost:           "0.0.0.0",
-						ListenPort:           8443,
-						EnableWebSocket:      &enableWebSocket,
-						LogLevel:             "info",
-						LogFormat:            "text",
-						Image:                "quay.io/user/argocd-agent:v1",
-						KeepAliveMinInterval: "30s",
+						Enabled: &enabled,
+						Server: &v1beta1.PrincipalServerSpec{
+							Auth:                 "mtls:CN=([^,]+)",
+							MetricsPort:          8000,
+							PprofPort:            6060,
+							HealthzPort:          8003,
+							ListenHost:           "0.0.0.0",
+							ListenPort:           8443,
+							EnableWebSocket:      &enableWebSocket,
+							LogLevel:             "info",
+							LogFormat:            "text",
+							KeepAliveMinInterval: "30s",
+							Image:                "quay.io/user/argocd-agent:v1",
+						},
 						Redis: &v1beta1.PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
 							CompressionType: "gzip",
 						},
 						Namespace: &v1beta1.PrincipalNamespaceSpec{
 							AllowedNamespaces:      []string{"*"},
-							CreateNamespace:        &createNamespace,
+							EnableNamespaceCreate:  &enableNamespaceCreate,
 							NamespaceCreatePattern: "agent-.*",
 							NamespaceCreateLabels:  []string{"environment=agent"},
 						},
 						TLS: &v1beta1.PrincipalTLSSpec{
-							SecretName: "tls-secret",
 							Server: &v1beta1.PrincipalTLSServerSpec{
-								AllowGenerate:    &allowGenerate,
-								CertPath:         "/path/to/cert",
-								KeyPath:          "/path/to/key",
-								RootCASecretName: "ca-secret",
-								RootCAPath:       "/path/to/ca",
+								SecretName:    "tls-secret",
+								AllowGenerate: &allowGenerate,
+								CertPath:      "/path/to/cert",
+								KeyPath:       "/path/to/key",
 							},
 							Client: &v1beta1.PrincipalTLSClientSpec{
-								Require:      &require,
-								MatchSubject: &matchSubject,
+								RequireClientCert:  &require,
+								ClientMatchSubject: &matchSubject,
+								RootCAPath:         "/path/to/ca",
+								RootCASecretName:   "ca-secret",
 							},
 						},
 						ResourceProxy: &v1beta1.PrincipalResourceProxySpec{
-							Enable:     &enableProxy,
-							SecretName: "proxy-secret",
-							TLS: &v1beta1.PrincipalResourceProxyTLSSpec{
-								CertPath: "/path/to/proxy-cert",
-								KeyPath:  "/path/to/proxy-key",
-								CAPath:   "/path/to/proxy-ca",
-							},
-							CA: &v1beta1.PrincipalResourceProxyCASpec{
-								SecretName: "proxy-ca-secret",
-								CAPath:     "/path/to/proxy-ca",
-							},
+							Enable:       &enableProxy,
+							SecretName:   "proxy-secret",
+							TLSCertPath:  "/path/to/proxy-cert",
+							TLSKeyPath:   "/path/to/proxy-key",
+							TLSCAPath:    "/path/to/proxy-ca",
+							CASecretName: "proxy-ca-secret",
 						},
 						JWT: &v1beta1.PrincipalJWTSpec{
-							AllowGenerate: &allowGenerate,
-							SecretName:    "jwt-secret",
-							KeyPath:       "/path/to/key",
+							InsecureGenerate: &insecureGenerate,
+							SecretName:       "jwt-secret",
+							Key:              "/path/to/key",
 						},
 					},
 				}
@@ -888,66 +890,64 @@ func TestBetaToAlphaConversion(t *testing.T) {
 			expectedOutput: makeTestArgoCDAlpha(func(cr *ArgoCD) {
 				enabled := true
 				enableWebSocket := true
-				createNamespace := true
+				enableNamespaceCreate := true
 				allowGenerate := true
+				insecureGenerate := true
 				require := true
 				matchSubject := true
 				enableProxy := true
 				cr.Spec.ArgoCDAgent = &ArgoCDAgentSpec{
 					Principal: &PrincipalSpec{
-						Enabled:              &enabled,
-						Auth:                 "mtls:CN=([^,]+)",
-						MetricsPort:          8000,
-						PprofPort:            6060,
-						HealthzPort:          8003,
-						ListenHost:           "0.0.0.0",
-						ListenPort:           8443,
-						EnableWebSocket:      &enableWebSocket,
-						LogLevel:             "info",
-						LogFormat:            "text",
-						Image:                "quay.io/user/argocd-agent:v1",
-						KeepAliveMinInterval: "30s",
+						Enabled: &enabled,
+						Server: &PrincipalServerSpec{
+							Auth:                 "mtls:CN=([^,]+)",
+							MetricsPort:          8000,
+							PprofPort:            6060,
+							HealthzPort:          8003,
+							ListenHost:           "0.0.0.0",
+							ListenPort:           8443,
+							EnableWebSocket:      &enableWebSocket,
+							LogLevel:             "info",
+							LogFormat:            "text",
+							Image:                "quay.io/user/argocd-agent:v1",
+							KeepAliveMinInterval: "30s",
+						},
 						Redis: &PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
 							CompressionType: "gzip",
 						},
 						Namespace: &PrincipalNamespaceSpec{
 							AllowedNamespaces:      []string{"*"},
-							CreateNamespace:        &createNamespace,
+							EnableNamespaceCreate:  &enableNamespaceCreate,
 							NamespaceCreatePattern: "agent-.*",
 							NamespaceCreateLabels:  []string{"environment=agent"},
 						},
 						TLS: &PrincipalTLSSpec{
-							SecretName: "tls-secret",
 							Server: &PrincipalTLSServerSpec{
-								AllowGenerate:    &allowGenerate,
-								CertPath:         "/path/to/cert",
-								KeyPath:          "/path/to/key",
-								RootCASecretName: "ca-secret",
-								RootCAPath:       "/path/to/ca",
+								SecretName:    "tls-secret",
+								AllowGenerate: &allowGenerate,
+								CertPath:      "/path/to/cert",
+								KeyPath:       "/path/to/key",
 							},
 							Client: &PrincipalTLSClientSpec{
-								Require:      &require,
-								MatchSubject: &matchSubject,
+								RequireClientCert:  &require,
+								ClientMatchSubject: &matchSubject,
+								RootCAPath:         "/path/to/ca",
+								RootCASecretName:   "ca-secret",
 							},
 						},
 						ResourceProxy: &PrincipalResourceProxySpec{
-							Enable:     &enableProxy,
-							SecretName: "proxy-secret",
-							TLS: &PrincipalResourceProxyTLSSpec{
-								CertPath: "/path/to/proxy-cert",
-								KeyPath:  "/path/to/proxy-key",
-								CAPath:   "/path/to/proxy-ca",
-							},
-							CA: &PrincipalResourceProxyCASpec{
-								SecretName: "proxy-ca-secret",
-								CAPath:     "/path/to/proxy-ca",
-							},
+							Enable:       &enableProxy,
+							SecretName:   "proxy-secret",
+							TLSCertPath:  "/path/to/proxy-cert",
+							TLSKeyPath:   "/path/to/proxy-key",
+							TLSCAPath:    "/path/to/proxy-ca",
+							CASecretName: "proxy-ca-secret",
 						},
 						JWT: &PrincipalJWTSpec{
-							AllowGenerate: &allowGenerate,
-							SecretName:    "jwt-secret",
-							KeyPath:       "/path/to/key",
+							InsecureGenerate: &insecureGenerate,
+							SecretName:       "jwt-secret",
+							Key:              "/path/to/key",
 						},
 					},
 				}

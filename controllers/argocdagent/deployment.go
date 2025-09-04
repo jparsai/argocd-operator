@@ -173,8 +173,9 @@ func buildArgs(compName string) []string {
 func buildPrincipalImage(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.Image != "" {
-		return cr.Spec.ArgoCDAgent.Principal.Image
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.Image != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.Image
 	}
 	return "quay.io/argoproj/argocd-agent:v1"
 }
@@ -372,16 +373,13 @@ func buildPrincipalContainerEnv(cr *argoproj.ArgoCD) []corev1.EnvVar {
 			Value: getPrincipalEnableWebSocket(cr),
 		}, {
 			Name:  EnvArgoCDPrincipalTLSSecretName,
-			Value: getPrincipalTlsSecretName(cr),
+			Value: getPrincipalTLSServerSecretName(cr),
 		}, {
 			Name:  EnvArgoCDPrincipalTLSServerRootCASecretName,
 			Value: getPrincipalTlsServerRootCASecretName(cr),
 		}, {
 			Name:  EnvArgoCDPrincipalResourceProxySecretName,
 			Value: getPrincipalResourceProxySecretName(cr),
-		}, {
-			Name:  EnvArgoCDPrincipalResourceProxyCaPath,
-			Value: getPrincipalResourceProxyCaPath(cr),
 		}, {
 			Name:  EnvArgoCDPrincipalResourceProxyCaSecretName,
 			Value: getPrincipalResourceProxyCaSecretName(cr),
@@ -391,6 +389,9 @@ func buildPrincipalContainerEnv(cr *argoproj.ArgoCD) []corev1.EnvVar {
 		}, {
 			Name:  EnvArgoCDPrincipalHealthzPort,
 			Value: getPrincipalHealthzPort(cr),
+		}, {
+			Name:  EnvArgoCDPrincipalResourceProxyCaPath,
+			Value: getPrincipalResourceProxyCaPath(cr),
 		},
 	}
 
@@ -439,8 +440,9 @@ const (
 func getPrincipalListenHost(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ListenHost != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ListenHost
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.ListenHost != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.ListenHost
 	}
 	return ""
 }
@@ -448,8 +450,9 @@ func getPrincipalListenHost(cr *argoproj.ArgoCD) string {
 func getPrincipalListenPort(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ListenPort != 0 {
-		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.ListenPort)
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.ListenPort != 0 {
+		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.Server.ListenPort)
 	}
 	return "8443"
 }
@@ -458,8 +461,9 @@ func getPrincipalListenPort(cr *argoproj.ArgoCD) string {
 func getPrincipalLogLevel(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.LogLevel != "" {
-		return cr.Spec.ArgoCDAgent.Principal.LogLevel
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.LogLevel != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.LogLevel
 	}
 	return "info"
 }
@@ -467,8 +471,9 @@ func getPrincipalLogLevel(cr *argoproj.ArgoCD) string {
 func getPrincipalLogFormat(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.LogFormat != "" {
-		return cr.Spec.ArgoCDAgent.Principal.LogFormat
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.LogFormat != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.LogFormat
 	}
 	return "text"
 }
@@ -477,8 +482,9 @@ func getPrincipalLogFormat(cr *argoproj.ArgoCD) string {
 func getPrincipalMetricsPort(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.MetricsPort != 0 {
-		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.MetricsPort)
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.MetricsPort != 0 {
+		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.Server.MetricsPort)
 	}
 	return "8000"
 }
@@ -498,8 +504,8 @@ func getPrincipalNamespaceCreateEnable(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.Namespace != nil &&
-		cr.Spec.ArgoCDAgent.Principal.Namespace.CreateNamespace != nil {
-		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.Namespace.CreateNamespace)
+		cr.Spec.ArgoCDAgent.Principal.Namespace.EnableNamespaceCreate != nil {
+		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.Namespace.EnableNamespaceCreate)
 	}
 	return "false"
 }
@@ -563,8 +569,9 @@ func getPrincipalTLSServerRootCAPath(cr *argoproj.ArgoCD) string {
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS.Server != nil &&
-		cr.Spec.ArgoCDAgent.Principal.TLS.Server.RootCAPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.TLS.Server.RootCAPath
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client != nil &&
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client.RootCAPath != "" {
+		return cr.Spec.ArgoCDAgent.Principal.TLS.Client.RootCAPath
 	}
 	return ""
 }
@@ -575,8 +582,8 @@ func getPrincipalTLSClientCertRequire(cr *argoproj.ArgoCD) string {
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS.Client != nil &&
-		cr.Spec.ArgoCDAgent.Principal.TLS.Client.Require != nil {
-		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.TLS.Client.Require)
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client.RequireClientCert != nil {
+		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.TLS.Client.RequireClientCert)
 	}
 	return "false"
 }
@@ -586,8 +593,8 @@ func getPrincipalTLSClientCertMatchSubject(cr *argoproj.ArgoCD) string {
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS.Client != nil &&
-		cr.Spec.ArgoCDAgent.Principal.TLS.Client.MatchSubject != nil {
-		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.TLS.Client.MatchSubject)
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client.ClientMatchSubject != nil {
+		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.TLS.Client.ClientMatchSubject)
 	}
 	return "false"
 }
@@ -597,9 +604,8 @@ func getPrincipalResourceProxyTLSCertPath(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.CertPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.CertPath
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCertPath != "" {
+		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCertPath
 	}
 	return ""
 }
@@ -608,9 +614,8 @@ func getPrincipalResourceProxyTLSKeyPath(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.KeyPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.KeyPath
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSKeyPath != "" {
+		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSKeyPath
 	}
 	return ""
 }
@@ -619,9 +624,8 @@ func getPrincipalResourceProxyTLSCAPath(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.CAPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLS.CAPath
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCAPath != "" {
+		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCAPath
 	}
 	return ""
 }
@@ -631,8 +635,8 @@ func getPrincipalJWTKeyPath(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.JWT != nil &&
-		cr.Spec.ArgoCDAgent.Principal.JWT.KeyPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.JWT.KeyPath
+		cr.Spec.ArgoCDAgent.Principal.JWT.Key != "" {
+		return cr.Spec.ArgoCDAgent.Principal.JWT.Key
 	}
 	return ""
 }
@@ -641,8 +645,8 @@ func getPrincipalJWTAllowGenerate(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.JWT != nil &&
-		cr.Spec.ArgoCDAgent.Principal.JWT.AllowGenerate != nil {
-		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.JWT.AllowGenerate)
+		cr.Spec.ArgoCDAgent.Principal.JWT.InsecureGenerate != nil {
+		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.JWT.InsecureGenerate)
 	}
 	return "false"
 }
@@ -651,8 +655,9 @@ func getPrincipalJWTAllowGenerate(cr *argoproj.ArgoCD) string {
 func getPrincipalAuth(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.Auth != "" {
-		return cr.Spec.ArgoCDAgent.Principal.Auth
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.Auth != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.Auth
 	}
 	return "mtls:CN=([^,]+)"
 }
@@ -661,8 +666,9 @@ func getPrincipalAuth(cr *argoproj.ArgoCD) string {
 func getPrincipalEnableWebSocket(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.EnableWebSocket != nil {
-		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.EnableWebSocket)
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.EnableWebSocket != nil {
+		return strconv.FormatBool(*cr.Spec.ArgoCDAgent.Principal.Server.EnableWebSocket)
 	}
 	return "false"
 }
@@ -682,8 +688,9 @@ func getPrincipalEnableResourceProxy(cr *argoproj.ArgoCD) string {
 func getPrincipalKeepAliveMinInterval(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.KeepAliveMinInterval != "" {
-		return cr.Spec.ArgoCDAgent.Principal.KeepAliveMinInterval
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.KeepAliveMinInterval != "" {
+		return cr.Spec.ArgoCDAgent.Principal.Server.KeepAliveMinInterval
 	}
 	return "30s"
 }
@@ -713,8 +720,9 @@ func getPrincipalRedisCompressionType(cr *argoproj.ArgoCD) string {
 func getPrincipalPprofPort(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.PprofPort != 0 {
-		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.PprofPort)
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.PprofPort != 0 {
+		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.Server.PprofPort)
 	}
 	return "0"
 }
@@ -729,24 +737,12 @@ func getPrincipalJWTSecretName(cr *argoproj.ArgoCD) string {
 	return "argocd-agent-jwt"
 }
 
-func getPrincipalResourceProxyCaPath(cr *argoproj.ArgoCD) string {
-	if cr.Spec.ArgoCDAgent != nil &&
-		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA.CAPath != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA.CAPath
-	}
-	return ""
-}
-
 func getPrincipalResourceProxyCaSecretName(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA != nil &&
-		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA.SecretName != "" {
-		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CA.SecretName
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CASecretName != "" {
+		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.CASecretName
 	}
 	return "argocd-agent-ca"
 }
@@ -761,12 +757,13 @@ func getPrincipalResourceProxySecretName(cr *argoproj.ArgoCD) string {
 	return "argocd-agent-resource-proxy-tls"
 }
 
-func getPrincipalTlsSecretName(cr *argoproj.ArgoCD) string {
+func getPrincipalTLSServerSecretName(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS != nil &&
-		cr.Spec.ArgoCDAgent.Principal.TLS.SecretName != "" {
-		return cr.Spec.ArgoCDAgent.Principal.TLS.SecretName
+		cr.Spec.ArgoCDAgent.Principal.TLS.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.TLS.Server.SecretName != "" {
+		return cr.Spec.ArgoCDAgent.Principal.TLS.Server.SecretName
 	}
 	return "argocd-agent-principal-tls"
 }
@@ -776,8 +773,9 @@ func getPrincipalTlsServerRootCASecretName(cr *argoproj.ArgoCD) string {
 		cr.Spec.ArgoCDAgent.Principal != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS != nil &&
 		cr.Spec.ArgoCDAgent.Principal.TLS.Server != nil &&
-		cr.Spec.ArgoCDAgent.Principal.TLS.Server.RootCASecretName != "" {
-		return cr.Spec.ArgoCDAgent.Principal.TLS.Server.RootCASecretName
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client != nil &&
+		cr.Spec.ArgoCDAgent.Principal.TLS.Client.RootCASecretName != "" {
+		return cr.Spec.ArgoCDAgent.Principal.TLS.Client.RootCASecretName
 	}
 	return "argocd-agent-ca"
 }
@@ -785,8 +783,19 @@ func getPrincipalTlsServerRootCASecretName(cr *argoproj.ArgoCD) string {
 func getPrincipalHealthzPort(cr *argoproj.ArgoCD) string {
 	if cr.Spec.ArgoCDAgent != nil &&
 		cr.Spec.ArgoCDAgent.Principal != nil &&
-		cr.Spec.ArgoCDAgent.Principal.HealthzPort != 0 {
-		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.HealthzPort)
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.HealthzPort != 0 {
+		return strconv.Itoa(cr.Spec.ArgoCDAgent.Principal.Server.HealthzPort)
 	}
 	return "8003"
+}
+
+func getPrincipalResourceProxyCaPath(cr *argoproj.ArgoCD) string {
+	if cr.Spec.ArgoCDAgent != nil &&
+		cr.Spec.ArgoCDAgent.Principal != nil &&
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy != nil &&
+		cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCAPath != "" {
+		return cr.Spec.ArgoCDAgent.Principal.ResourceProxy.TLSCAPath
+	}
+	return ""
 }
