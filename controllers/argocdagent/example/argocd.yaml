@@ -8,11 +8,19 @@ spec:
   argoCDAgent:
     principal:
       enabled: true
-      allowedNamespaces:
-        - "*"
-      jwtAllowGenerate: true
-      auth: "mtls:CN=([^,]+)"
-      logLevel: "trace"
+      server:
+        auth: "mtls:CN=([^,]+)"
+        logLevel: "trace"
+      namespace:
+        allowedNamespaces:
+          - "*"
+      resourceProxy:
+        enable: true
+      tls:
+        server:
+          insecureGenerate: true   
+      jwt:
+        insecureGenerate: true     
   sourceNamespaces:
     - "agent-managed"
     - "agent-autonomous"

@@ -1,24 +1,30 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: argocd-e2e-cluster-config
----
 apiVersion: argoproj.io/v1beta1
 kind: ArgoCD
 metadata:
   name: argocd
-  namespace: argocd-e2e-cluster-config
+  #namespace: argocd-e2e-cluster-config
 spec:
   controller:
     enabled: false
   argoCDAgent:
     principal:
       enabled: true
-      allowedNamespaces:
-        - "*"
-      jwtAllowGenerate: true
-      auth: "mtls:CN=([^,]+)"
-      logLevel: "trace"
+      server:
+        auth: "mtls:CN=([^,]+)"
+        logLevel: "info"
+        env:
+          - name: TEST_ENV
+            value: test_value
+      namespace:
+        allowedNamespaces:
+          - "*"  
+      resourceProxy:
+        enable: true
+      tls:
+        server:
+          insecureGenerate: true
+      jwt:
+        insecureGenerate: true
   sourceNamespaces:
     - "agent-managed"
     - "agent-autonomous"
