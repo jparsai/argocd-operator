@@ -262,6 +262,18 @@ func updateDeploymentIfChanged(compName, saName string, cr *argoproj.ArgoCD, dep
 		deployment.Spec.Template.Spec.Containers[0].Name = generateAgentResourceName(cr.Name, compName)
 	}
 
+	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Env, buildPrincipalContainerEnv(cr)) {
+		log.Info("deployment container env is being updated")
+		changed = true
+		deployment.Spec.Template.Spec.Containers[0].Env = buildPrincipalContainerEnv(cr)
+	}
+
+	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Args, buildArgs(compName)) {
+		log.Info("deployment container args is being updated")
+		changed = true
+		deployment.Spec.Template.Spec.Containers[0].Args = buildArgs(compName)
+	}
+
 	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].SecurityContext, buildSecurityContext()) {
 		log.Info("deployment container security context is being updated")
 		changed = true
@@ -405,7 +417,10 @@ func buildPrincipalContainerEnv(cr *argoproj.ArgoCD) []corev1.EnvVar {
 	}
 
 	// Add custom environment variables if specified in the CR
-	if cr.Spec.ArgoCDAgent.Principal.Server.Env != nil {
+	if cr.Spec.ArgoCDAgent != nil &&
+		cr.Spec.ArgoCDAgent.Principal != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server != nil &&
+		cr.Spec.ArgoCDAgent.Principal.Server.Env != nil {
 		env = append(env, cr.Spec.ArgoCDAgent.Principal.Server.Env...)
 	}
 

@@ -1290,7 +1290,6 @@ type PrincipalTLSSpec struct {
 
 type PrincipalTLSServerSpec struct {
 
-	///
 	// SecretName is The name of the secret containing the TLS certificate and key.
 	SecretName string `json:"secretName,omitempty"`
 
@@ -1299,7 +1298,7 @@ type PrincipalTLSServerSpec struct {
 
 	// CertPath is the path to the TLS certificate to be used by the gRPC server.
 	CertPath string `json:"certPath,omitempty"`
-	///
+
 	// KeyPath is the path to the TLS private key to be used by the gRPC server
 	KeyPath string `json:"keyPath,omitempty"`
 }

@@ -636,6 +636,9 @@ func TestAlphaToBetaConversion(t *testing.T) {
 							LogFormat:            "text",
 							KeepAliveMinInterval: "30s",
 							Image:                "quay.io/user/argocd-agent:v1",
+							Env: []corev1.EnvVar{
+								{Name: "TEST_ENV", Value: "test-value"},
+							},
 						},
 						Redis: &v1beta1.PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
@@ -846,6 +849,9 @@ func TestBetaToAlphaConversion(t *testing.T) {
 							LogFormat:            "text",
 							KeepAliveMinInterval: "30s",
 							Image:                "quay.io/user/argocd-agent:v1",
+							Env: []corev1.EnvVar{
+								{Name: "TEST_ENV", Value: "test-value"},
+							},
 						},
 						Redis: &v1beta1.PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",
@@ -911,6 +917,9 @@ func TestBetaToAlphaConversion(t *testing.T) {
 							LogFormat:            "text",
 							Image:                "quay.io/user/argocd-agent:v1",
 							KeepAliveMinInterval: "30s",
+							Env: []corev1.EnvVar{
+								{Name: "TEST_ENV", Value: "test-value"},
+							},
 						},
 						Redis: &PrincipalRedisSpec{
 							ServerAddress:   "redis:6379",

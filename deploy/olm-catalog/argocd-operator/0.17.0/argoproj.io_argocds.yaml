@@ -481,28 +481,25 @@ spec:
                           component namespace.
                         properties:
                           allowedNamespaces:
-                            description: |-
-                              //
-                              AllowedNamespaces is a list of namespaces the principal shall watch and process Argo CD resources in.
+                            description: AllowedNamespaces is a list of namespaces
+                              the principal shall watch and process Argo CD resources
+                              in.
                             items:
                               type: string
                             type: array
                           enableNamespaceCreate:
-                            description: |-
-                              //
-                              EnableNamespaceCreate is the flag to enable namespace creation for agents.
+                            description: EnableNamespaceCreate is the flag to enable
+                              namespace creation for agents.
                             type: boolean
                           namespaceCreateLabels:
-                            description: |-
-                              //
-                              NamespaceCreateLabels is the set of labels to apply to namespaces created for agents. Ex: "foo=bar,bar=baz"
+                            description: 'NamespaceCreateLabels is the set of labels
+                              to apply to namespaces created for agents. Ex: "foo=bar,bar=baz"'
                             items:
                               type: string
                             type: array
                           namespaceCreatePattern:
-                            description: |-
-                              //
-                              NamespaceCreatePattern is a regexp pattern to restrict the names of namespaces to be created.
+                            description: NamespaceCreatePattern is a regexp pattern
+                              to restrict the names of namespaces to be created.
                             type: string
                         type: object
                       redis:
@@ -510,14 +507,12 @@ spec:
                           component.
                         properties:
                           compressionType:
-                            description: |-
-                              //
-                              CompressionType is the compression type to be used by Redis.
+                            description: CompressionType is the compression type to
+                              be used by Redis.
                             type: string
                           serverAddress:
-                            description: |-
-                              //
-                              ServerAddress is the address of the Redis server to be used by the Principal component.
+                            description: ServerAddress is the address of the Redis
+                              server to be used by the Principal component.
                             type: string
                         type: object
                       resourceProxy:
@@ -525,34 +520,28 @@ spec:
                           for the Principal component.
                         properties:
                           caSecretName:
-                            description: |-
-                              //
-                              CASecretName is the name of the secret containing the CA certificate for the resource proxy.
+                            description: CASecretName is the name of the secret containing
+                              the CA certificate for the resource proxy.
                             type: string
                           enable:
-                            description: |-
-                              //
-                              Enable is the flag to enable the resource proxy.
+                            description: Enable is the flag to enable the resource
+                              proxy.
                             type: boolean
                           secretName:
-                            description: |-
-                              //
-                              SecretName is the name of the secret containing the TLS certificate and key for the resource proxy.
+                            description: SecretName is the name of the secret containing
+                              the TLS certificate and key for the resource proxy.
                             type: string
                           tlsCAPath:
-                            description: |-
-                              //
-                              TLSCAPath is the path to the CA certificate to be used by the resource proxy.
+                            description: TLSCAPath is the path to the CA certificate
+                              to be used by the resource proxy.
                             type: string
                           tlsCertPath:
-                            description: |-
-                              //
-                              TLSCertPath is the path to the TLS certificate to be used by the resource proxy.
+                            description: TLSCertPath is the path to the TLS certificate
+                              to be used by the resource proxy.
                             type: string
                           tlsKeyPath:
-                            description: |-
-                              //
-                              TLSKeyPath is the path to the TLS private key to be used by the resource proxy.
+                            description: TLSKeyPath is the path to the TLS private
+                              key to be used by the resource proxy.
                             type: string
                         type: object
                       server:
@@ -560,9 +549,8 @@ spec:
                           component.
                         properties:
                           auth:
-                            description: |-
-                              //
-                              Auth is the authentication method for the Principal component.
+                            description: Auth is the authentication method for the
+                              Principal component.
                             type: string
                           enableWebSocket:
                             description: EnableWebSocket is the flag to enable the
@@ -736,24 +724,23 @@ spec:
                               component client.
                             properties:
                               clientMatchSubject:
-                                description: |-
-                                  //
-                                  ClientMatchSubject is the flag to mention whether to match the subject field in a client certificate presented by an agent to the agent's name.
+                                description: ClientMatchSubject is the flag to mention
+                                  whether to match the subject field in a client certificate
+                                  presented by an agent to the agent's name.
                                 type: boolean
                               requireClientCert:
-                                description: |-
-                                  //
-                                  RequireClientCert is the flag to indicate whether to require client certs from agents upon connection.
+                                description: RequireClientCert is the flag to indicate
+                                  whether to require client certs from agents upon
+                                  connection.
                                 type: boolean
                               rootCAPath:
-                                description: |-
-                                  //
-                                  RootCAPath is the path to a TLS root certificate authority to be used to validate agent's client certificates against.
+                                description: RootCAPath is the path to a TLS root
+                                  certificate authority to be used to validate agent's
+                                  client certificates against.
                                 type: string
                               rootCASecretName:
-                                description: |-
-                                  //
-                                  RootCASecretName is the name of the secret containing the root CA TLS certificate
+                                description: RootCASecretName is the name of the secret
+                                  containing the root CA TLS certificate
                                 type: string
                             type: object
                           server:
@@ -761,24 +748,21 @@ spec:
                               component server.
                             properties:
                               allowGenerate:
-                                description: |-
-                                  //
-                                  AllowGenerate is the flag to allow the principal to generate its own set of TLS cert and key on startup when none are configured
+                                description: AllowGenerate is the flag to allow the
+                                  principal to generate its own set of TLS cert and
+                                  key on startup when none are configured
                                 type: boolean
                               certPath:
-                                description: |-
-                                  //
-                                  CertPath is the path to the TLS certificate to be used by the gRPC server.
+                                description: CertPath is the path to the TLS certificate
+                                  to be used by the gRPC server.
                                 type: string
                               keyPath:
-                                description: |-
-                                  /
-                                  KeyPath is the path to the TLS private key to be used by the gRPC server
+                                description: KeyPath is the path to the TLS private
+                                  key to be used by the gRPC server
                                 type: string
                               secretName:
-                                description: |-
-                                  /
-                                  SecretName is The name of the secret containing the TLS certificate and key.
+                                description: SecretName is The name of the secret
+                                  containing the TLS certificate and key.
                                 type: string
                             type: object
                         type: object
@@ -10803,14 +10787,12 @@ spec:
                                   to be used by the gRPC server.
                                 type: string
                               keyPath:
-                                description: |-
-                                  /
-                                  KeyPath is the path to the TLS private key to be used by the gRPC server
+                                description: KeyPath is the path to the TLS private
+                                  key to be used by the gRPC server
                                 type: string
                               secretName:
-                                description: |-
-                                  /
-                                  SecretName is The name of the secret containing the TLS certificate and key.
+                                description: SecretName is The name of the secret
+                                  containing the TLS certificate and key.
                                 type: string
                             type: object
                         type: object

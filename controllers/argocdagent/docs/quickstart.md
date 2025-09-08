@@ -49,14 +49,19 @@ spec:
   argoCDAgent:
     principal:
       enabled: true
+      server:
+        auth: "mtls:CN=([^,]+)"
+        logLevel: "trace"
       namespace:
         allowedNamespaces:
           - "*"
+      resourceProxy:
+        enable: true
+      tls:
+        server:
+          insecureGenerate: true   
       jwt:
-        allowGenerate: true
-      auth: "mtls:CN=([^,]+)"
-      logLevel: "trace"
-      image: "quay.io/user/argocd-agent:v1"
+        insecureGenerate: true     
   sourceNamespaces:
     - "agent-managed"
     - "agent-autonomous"
@@ -84,7 +89,7 @@ A Service `argocd-agent-principal-metrics` will be created to expose principal m
 
 ### Step 6: Set up Workload Clusters
 
-Follow this doc (TODO: Link to helm chart documentation) to set up workload clusters.
+Follow this [doc](https://github.com/argoproj-labs/argocd-agent/blob/main/docs/getting-started/openshift/index.md#setting-up-agent-workload-cluster) to set up workload clusters.
 
 While installing managed agent you need to provide host names of principal's redis and repo server in [argocd-cmd-params-cm](https://github.com/argoproj-labs/argocd-agent/blob/main/hack/dev-env/agent-managed/argocd-cmd-params-cm.yaml#L6) ConfigMap to allow it to communicate with control plan's redis server.
 
