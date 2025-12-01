@@ -558,5 +558,6 @@ func buildApplicationResource(applicationName, nsName, agentName, argocdInstance
 			Namespace: autonomousApplicationNamespace,
 		}
 	}
+	
 	return application
 }
