@@ -122,179 +122,61 @@ const (
 	resourceProxyTLSSecretName = "argocd-agent-resource-proxy-tls"
 )
 
+var (
+	principalStartupLogs = []string{
+		"Starting metrics server",
+		"Redis proxy started",
+		"Application informer synced and ready",
+		"AppProject informer synced and ready",
+		"Resource proxy started",
+		"Namespace informer synced and ready",
+		"Starting healthz server",
+	}
+
+	agentStartupLogs = []string{
+		"Starting metrics server",
+		"Starting healthz server",
+		"Authentication successful",
+		"Connected to argocd-agent",
+		"Starting event writer",
+		"Starting to send events to event stream",
+		"Starting to receive events from event stream",
+	}
+)
+
 var _ = Describe("GitOps Operator Sequential E2E Tests", func() {
 	Context("validate_argocd_agent_principal_connected", func() {
 		var (
-			k8sClient client.Client
-			ctx       context.Context
-
-			// Cleanup functions for namespaces that are used in this test
-			cleanupFuncPrincipalInstance       func()
-			cleanupFuncManagedAgentInstance    func()
-			cleanupFuncAutonomousAgentInstance func()
-			cleanupFuncClusterManaged          func()
-			cleanupFuncClusterAutonomous       func()
-			cleanupFuncManagedApplication      func()
-			cleanupFuncAutonomousApplication   func()
+			k8sClient       client.Client
+			ctx             context.Context
+			cleanupFuncs    []func()
+			registerCleanup func(func())
 		)
 
 		BeforeEach(func() {
 			fixture.EnsureSequentialCleanSlate()
 			k8sClient, _ = fixtureUtils.GetE2ETestKubeClient()
 			ctx = context.Background()
+			cleanupFuncs = nil
+			registerCleanup = func(fn func()) {
+				if fn != nil {
+					cleanupFuncs = append(cleanupFuncs, fn)
+				}
+			}
 
 			// Create required namespaces and cleanup functions
-			_, cleanupFuncClusterManaged = fixture.CreateNamespaceWithCleanupFunc(managedClusterName)
-			_, cleanupFuncClusterAutonomous = fixture.CreateNamespaceWithCleanupFunc(autonomousClusterName)
-			_, cleanupFuncManagedApplication = fixture.CreateClusterScopedManagedNamespaceWithCleanupFunc(managedApplicationNamespace, argoCDInstanceNameAgent)
-			_, cleanupFuncAutonomousApplication = fixture.CreateClusterScopedManagedNamespaceWithCleanupFunc(autonomousApplicationNamespace, argoCDInstanceNameAgent)
+			_, cleanupFuncClusterManaged := fixture.CreateNamespaceWithCleanupFunc(managedClusterName)
+			registerCleanup(cleanupFuncClusterManaged)
+
+			_, cleanupFuncClusterAutonomous := fixture.CreateNamespaceWithCleanupFunc(autonomousClusterName)
+			registerCleanup(cleanupFuncClusterAutonomous)
+
+			_, cleanupFuncManagedApplication := fixture.CreateClusterScopedManagedNamespaceWithCleanupFunc(managedApplicationNamespace, argoCDInstanceNameAgent)
+			registerCleanup(cleanupFuncManagedApplication)
+
+			_, cleanupFuncAutonomousApplication := fixture.CreateClusterScopedManagedNamespaceWithCleanupFunc(autonomousApplicationNamespace, argoCDInstanceNameAgent)
+			registerCleanup(cleanupFuncAutonomousApplication)
 		})
-
-		// Deploy the principal ArgoCD instance. This function creates the principal ArgoCD instance and
-		// creates the required secrets for the principal and then verifies the principal deployment starts successfully
-		deployPrincipal := func() {
-			var nsPrincipal *corev1.Namespace
-			nsPrincipal, cleanupFuncPrincipalInstance = fixture.CreateNamespaceWithCleanupFunc(namespacePrincipal)
-
-			By("Create ArgoCD instance with principal component enabled")
-
-			argoCDInstance := buildArgoCDResource(argoCDInstanceNamePrincipal, argov1beta1api.AgentComponentTypePrincipal, "", nsPrincipal)
-			waitForLoadBalancer := true
-			if !fixture.RunningOnOpenShift() {
-				argoCDInstance.Spec.ArgoCDAgent.Principal.Server.Service.Type = corev1.ServiceTypeClusterIP
-				waitForLoadBalancer = false
-			}
-
-			Expect(k8sClient.Create(ctx, argoCDInstance)).To(Succeed())
-
-			By("Wait for principal service to be ready and use LoadBalancer hostname/IP when available")
-
-			additionalSANs := []string{}
-			if waitForLoadBalancer {
-				principalService := &corev1.Service{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      deploymentNamePrincipal,
-						Namespace: nsPrincipal.Name,
-					},
-				}
-
-				err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 3*time.Minute, true, func(ctx context.Context) (bool, error) {
-					if pollErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(principalService), principalService); pollErr != nil {
-						return false, nil
-					}
-
-					for _, ingress := range principalService.Status.LoadBalancer.Ingress {
-						switch {
-						case ingress.Hostname != "":
-							additionalSANs = append(additionalSANs, ingress.Hostname)
-							return true, nil
-						case ingress.IP != "":
-							additionalSANs = append(additionalSANs, ingress.IP)
-							return true, nil
-						}
-					}
-					return false, nil
-				})
-				if err != nil {
-					GinkgoWriter.Println("LoadBalancer ingress not available, proceeding without external SANs:", err)
-				}
-			} else {
-				GinkgoWriter.Println("Cluster does not support LoadBalancer services; using in-cluster service DNS SANs only")
-			}
-
-			By("Create required secrets for principal")
-
-			agentFixture.CreateRequiredSecrets(agentFixture.PrincipalSecretsConfig{
-				PrincipalNamespaceName:     namespacePrincipal,
-				PrincipalServiceName:       deploymentNamePrincipal,
-				ResourceProxyServiceName:   fmt.Sprintf("%s-agent-principal-resource-proxy", argoCDInstanceNamePrincipal),
-				JWTSecretName:              JWTSecretName,
-				PrincipalTLSSecretName:     principalTLSSecretName,
-				RootCASecretName:           rootCASecretName,
-				ResourceProxyTLSSecretName: resourceProxyTLSSecretName,
-				AdditionalPrincipalSANs:    additionalSANs,
-			})
-
-			By("Verify that principal deployment is in Ready state")
-
-			Eventually(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-				Name:      deploymentNamePrincipal,
-				Namespace: nsPrincipal.Name}}, "120s", "5s").Should(deploymentFixture.HaveReadyReplicas(1))
-
-			By("Verify principal logs contain expected messages")
-
-			agentFixture.VerifyLogs(deploymentNamePrincipal, nsPrincipal.Name, []string{
-				"Starting metrics server",
-				"Redis proxy started",
-				"Application informer synced and ready",
-				"AppProject informer synced and ready",
-				"Resource proxy started",
-				"Namespace informer synced and ready",
-				"Starting healthz server",
-			})
-		}
-
-		// Deploy the agent ArgoCD instance. This function creates the agent ArgoCD instance in the specified mode,
-		// creates required secrets for the agent and then verifies the agent deployment starts successfully.
-		deployAgent := func(agentMode argov1beta1api.AgentMode) {
-			var nsAgent *corev1.Namespace
-			var agentName string
-
-			if agentMode == argov1beta1api.AgentModeManaged {
-				nsAgent, cleanupFuncManagedAgentInstance = fixture.CreateNamespaceWithCleanupFunc(namespaceManagedAgent)
-				agentName = managedClusterName
-			} else {
-				nsAgent, cleanupFuncAutonomousAgentInstance = fixture.CreateNamespaceWithCleanupFunc(namespaceAutonomousAgent)
-				agentName = autonomousClusterName
-			}
-
-			By("Create required secrets for " + string(agentMode) + " agent")
-
-			agentFixture.CreateRequiredAgentSecrets(agentFixture.AgentSecretsConfig{
-				AgentNamespace:            nsAgent,
-				PrincipalNamespaceName:    namespacePrincipal,
-				PrincipalRootCASecretName: rootCASecretName,
-				AgentRootCASecretName:     rootCASecretName,
-				ClientTLSSecretName:       clientTLSSecretName,
-				ClientCommonName:          agentName,
-			})
-
-			By("Create cluster registration secret for " + string(agentMode) + " agent")
-
-			agentFixture.CreateClusterRegistrationSecret(agentFixture.ClusterRegistrationSecretConfig{
-				PrincipalNamespaceName:    namespacePrincipal,
-				AgentNamespaceName:        nsAgent.Name,
-				AgentName:                 agentName,
-				ResourceProxyServiceName:  fmt.Sprintf("%s-agent-principal-resource-proxy", argoCDInstanceNamePrincipal),
-				ResourceProxyPort:         9090,
-				PrincipalRootCASecretName: rootCASecretName,
-				AgentTLSSecretName:        clientTLSSecretName,
-			})
-
-			By("Deploy " + string(agentMode) + " agent ArgoCD instance")
-
-			argoCDInstanceAgent := buildArgoCDResource(argoCDInstanceNameAgent, argov1beta1api.AgentComponentTypeAgent, agentMode, nsAgent)
-			// Set the principal server address
-			argoCDInstanceAgent.Spec.ArgoCDAgent.Agent.Client.PrincipalServerAddress = fmt.Sprintf("%s.%s.svc", deploymentNamePrincipal, namespacePrincipal)
-			Expect(k8sClient.Create(ctx, argoCDInstanceAgent)).To(Succeed())
-
-			By("Verifying " + string(agentMode) + " agent deployment is in Ready state")
-
-			Eventually(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deploymentNameAgent, Namespace: nsAgent.Name}}, "120s", "5s").
-				Should(deploymentFixture.HaveReadyReplicas(1))
-
-			By("Verifying " + string(agentMode) + " agent logs contain expected messages")
-
-			agentFixture.VerifyLogs(deploymentNameAgent, nsAgent.Name, []string{
-				"Starting metrics server",
-				"Starting healthz server",
-				"Authentication successful",
-				"Connected to argocd-agent",
-				"Starting event writer",
-				"Starting to send events to event stream",
-				"Starting to receive events from event stream",
-			})
-		}
 
 		// This function checks principal logs to verify it has connected to both agents.
 		validatePrincipalAndAgentConnection := func() {
@@ -330,13 +212,13 @@ var _ = Describe("GitOps Operator Sequential E2E Tests", func() {
 		It("Should deploy ArgoCD principal and agent instances in both modes and verify they are working as expected", func() {
 
 			By("Deploy principal and verify it starts successfully")
-			deployPrincipal()
+			deployPrincipal(ctx, k8sClient, registerCleanup)
 
 			By("Deploy managed agent and verify it starts successfully")
-			deployAgent(argov1beta1api.AgentModeManaged)
+			deployAgent(ctx, k8sClient, registerCleanup, argov1beta1api.AgentModeManaged)
 
 			By("Deploy autonomous agent and verify it starts successfully")
-			deployAgent(argov1beta1api.AgentModeAutonomous)
+			deployAgent(ctx, k8sClient, registerCleanup, argov1beta1api.AgentModeAutonomous)
 
 			By("Validate both agents are connected to the principal")
 			validatePrincipalAndAgentConnection()
@@ -348,47 +230,165 @@ var _ = Describe("GitOps Operator Sequential E2E Tests", func() {
 			Expect(k8sClient.Create(ctx, buildAppProjectResource(namespaceAutonomousAgent, argov1beta1api.AgentModeAutonomous))).To(Succeed())
 
 			By("Deploy application for managed mode")
-			deployAndValidateApplication(buidApplicationResource(applicationNameManaged,
+			deployAndValidateApplication(buildApplicationResource(applicationNameManaged,
 				managedClusterName, managedClusterName, argoCDInstanceNameAgent, argov1beta1api.AgentModeManaged))
 
 			By("Deploy application for autonomous mode")
-			deployAndValidateApplication(buidApplicationResource(applicationNameAutonomous,
+			deployAndValidateApplication(buildApplicationResource(applicationNameAutonomous,
 				namespaceAutonomousAgent, autonomousClusterName, argoCDInstanceNameAgent, argov1beta1api.AgentModeAutonomous))
 		})
 
 		AfterEach(func() {
-			By("Cleanup namespaces and resources created in this test")
-
-			if cleanupFuncManagedAgentInstance != nil {
-				cleanupFuncManagedAgentInstance()
-			}
-
-			if cleanupFuncAutonomousAgentInstance != nil {
-				cleanupFuncAutonomousAgentInstance()
-			}
-
-			if cleanupFuncPrincipalInstance != nil {
-				cleanupFuncPrincipalInstance()
-			}
-
-			if cleanupFuncClusterManaged != nil {
-				cleanupFuncClusterManaged()
-			}
-
-			if cleanupFuncClusterAutonomous != nil {
-				cleanupFuncClusterAutonomous()
-			}
-
-			if cleanupFuncManagedApplication != nil {
-				cleanupFuncManagedApplication()
-			}
-
-			if cleanupFuncAutonomousApplication != nil {
-				cleanupFuncAutonomousApplication()
+			By("Cleanup namespaces created in this test")
+			for i := len(cleanupFuncs) - 1; i >= 0; i-- {
+				cleanupFuncs[i]()
 			}
 		})
+
 	})
 })
+
+// This function deploys the principal ArgoCD instance and waits for it to be ready.
+// It creates the required secrets for the principal and verifies that the principal deployment is in Ready state.
+// It also verifies that the principal logs contain the expected messages.
+func deployPrincipal(ctx context.Context, k8sClient client.Client, registerCleanup func(func())) {
+	GinkgoHelper()
+
+	nsPrincipal, cleanup := fixture.CreateNamespaceWithCleanupFunc(namespacePrincipal)
+	registerCleanup(cleanup)
+
+	By("Create ArgoCD instance with principal component enabled")
+
+	argoCDInstance := buildArgoCDResource(argoCDInstanceNamePrincipal, argov1beta1api.AgentComponentTypePrincipal, "", nsPrincipal)
+	waitForLoadBalancer := true
+	if !fixture.RunningOnOpenShift() {
+		argoCDInstance.Spec.ArgoCDAgent.Principal.Server.Service.Type = corev1.ServiceTypeClusterIP
+		waitForLoadBalancer = false
+	}
+
+	Expect(k8sClient.Create(ctx, argoCDInstance)).To(Succeed())
+
+	By("Wait for principal service to be ready and use LoadBalancer hostname/IP when available")
+
+	additionalSANs := []string{}
+	if waitForLoadBalancer {
+		principalService := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      deploymentNamePrincipal,
+				Namespace: nsPrincipal.Name,
+			},
+		}
+
+		err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 3*time.Minute, true, func(ctx context.Context) (bool, error) {
+			if pollErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(principalService), principalService); pollErr != nil {
+				return false, nil
+			}
+
+			for _, ingress := range principalService.Status.LoadBalancer.Ingress {
+				switch {
+				case ingress.Hostname != "":
+					additionalSANs = append(additionalSANs, ingress.Hostname)
+					return true, nil
+				case ingress.IP != "":
+					additionalSANs = append(additionalSANs, ingress.IP)
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+		if err != nil {
+			GinkgoWriter.Println("LoadBalancer ingress not available, proceeding without external SANs:", err)
+		}
+	} else {
+		GinkgoWriter.Println("Cluster does not support LoadBalancer services; using in-cluster service DNS SANs only")
+	}
+
+	By("Create required secrets for principal")
+
+	agentFixture.CreateRequiredSecrets(agentFixture.PrincipalSecretsConfig{
+		PrincipalNamespaceName:     namespacePrincipal,
+		PrincipalServiceName:       deploymentNamePrincipal,
+		ResourceProxyServiceName:   fmt.Sprintf("%s-agent-principal-resource-proxy", argoCDInstanceNamePrincipal),
+		JWTSecretName:              JWTSecretName,
+		PrincipalTLSSecretName:     principalTLSSecretName,
+		RootCASecretName:           rootCASecretName,
+		ResourceProxyTLSSecretName: resourceProxyTLSSecretName,
+		AdditionalPrincipalSANs:    additionalSANs,
+	})
+
+	By("Verify that principal deployment is in Ready state")
+
+	Eventually(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+		Name:      deploymentNamePrincipal,
+		Namespace: nsPrincipal.Name}}, "120s", "5s").Should(deploymentFixture.HaveReadyReplicas(1))
+
+	By("Verify principal logs contain expected messages")
+
+	agentFixture.VerifyLogs(deploymentNamePrincipal, nsPrincipal.Name, principalStartupLogs)
+}
+
+// This function deploys the agent ArgoCD instance and waits for it to be ready.
+// It creates the required secrets for the agent and verifies that the agent deployment is in Ready state.
+// It also verifies that the agent logs contain the expected messages.
+func deployAgent(ctx context.Context, k8sClient client.Client, registerCleanup func(func()), agentMode argov1beta1api.AgentMode) {
+	GinkgoHelper()
+
+	var (
+		nsAgent   *corev1.Namespace
+		agentName string
+	)
+
+	if agentMode == argov1beta1api.AgentModeManaged {
+		var cleanup func()
+		nsAgent, cleanup = fixture.CreateNamespaceWithCleanupFunc(namespaceManagedAgent)
+		registerCleanup(cleanup)
+		agentName = managedClusterName
+	} else {
+		var cleanup func()
+		nsAgent, cleanup = fixture.CreateNamespaceWithCleanupFunc(namespaceAutonomousAgent)
+		registerCleanup(cleanup)
+		agentName = autonomousClusterName
+	}
+
+	By("Create required secrets for " + string(agentMode) + " agent")
+
+	agentFixture.CreateRequiredAgentSecrets(agentFixture.AgentSecretsConfig{
+		AgentNamespace:            nsAgent,
+		PrincipalNamespaceName:    namespacePrincipal,
+		PrincipalRootCASecretName: rootCASecretName,
+		AgentRootCASecretName:     rootCASecretName,
+		ClientTLSSecretName:       clientTLSSecretName,
+		ClientCommonName:          agentName,
+	})
+
+	By("Create cluster registration secret for " + string(agentMode) + " agent")
+
+	agentFixture.CreateClusterRegistrationSecret(agentFixture.ClusterRegistrationSecretConfig{
+		PrincipalNamespaceName:    namespacePrincipal,
+		AgentNamespaceName:        nsAgent.Name,
+		AgentName:                 agentName,
+		ResourceProxyServiceName:  fmt.Sprintf("%s-agent-principal-resource-proxy", argoCDInstanceNamePrincipal),
+		ResourceProxyPort:         9090,
+		PrincipalRootCASecretName: rootCASecretName,
+		AgentTLSSecretName:        clientTLSSecretName,
+	})
+
+	By("Deploy " + string(agentMode) + " agent ArgoCD instance")
+
+	argoCDInstanceAgent := buildArgoCDResource(argoCDInstanceNameAgent, argov1beta1api.AgentComponentTypeAgent, agentMode, nsAgent)
+	// Set the principal server address
+	argoCDInstanceAgent.Spec.ArgoCDAgent.Agent.Client.PrincipalServerAddress = fmt.Sprintf("%s.%s.svc", deploymentNamePrincipal, namespacePrincipal)
+	Expect(k8sClient.Create(ctx, argoCDInstanceAgent)).To(Succeed())
+
+	By("Verifying " + string(agentMode) + " agent deployment is in Ready state")
+
+	Eventually(&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deploymentNameAgent, Namespace: nsAgent.Name}}, "120s", "5s").
+		Should(deploymentFixture.HaveReadyReplicas(1))
+
+	By("Verifying " + string(agentMode) + " agent logs contain expected messages")
+
+	agentFixture.VerifyLogs(deploymentNameAgent, nsAgent.Name, agentStartupLogs)
+}
 
 // This function builds the ArgoCD instance for the principal or agent based on the component name.
 func buildArgoCDResource(argoCDName string, componentType argov1beta1api.AgentComponentType,
@@ -475,11 +475,6 @@ func buildArgoCDResource(argoCDName string, componentType argov1beta1api.AgentCo
 					},
 				},
 			},
-
-			// Enable cluster-scoped namespace management
-			//SourceNamespaces: []string{
-			//managedApplicationNamespace,
-			//},
 		}
 	}
 
@@ -522,7 +517,7 @@ func buildAppProjectResource(nsName string, agentMode argov1beta1api.AgentMode) 
 }
 
 // This function builds the Application resource for the managed or autonomous agent.
-func buidApplicationResource(applicationName, nsName, agentName, argocdInstanceName string,
+func buildApplicationResource(applicationName, nsName, agentName, argocdInstanceName string,
 	agentMode argov1beta1api.AgentMode) *argocdv1alpha1.Application {
 
 	application := &argocdv1alpha1.Application{
