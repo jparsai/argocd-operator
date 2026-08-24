@@ -1436,6 +1436,129 @@ func withServiceType(serviceType corev1.ServiceType) argoCDOpt {
 	}
 }
 
+func withServiceAnnotations(annotations map[string]string) argoCDOpt {
+	return func(a *argoproj.ArgoCD) {
+		if a.Spec.ArgoCDAgent.Principal.Server == nil {
+			a.Spec.ArgoCDAgent.Principal.Server = &argoproj.PrincipalServerSpec{}
+		}
+		a.Spec.ArgoCDAgent.Principal.Server.Service.Annotations = annotations
+	}
+}
+
+func TestBuildService_ServiceAnnotations_WithAnnotations(t *testing.T) {
+	annotations := map[string]string{
+		"metallb.universe.tf/address-pool": "address-pool",
+		"custom.annotation/key":            "value",
+	}
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(annotations))
+
+	svc := buildService(generateAgentResourceName(cr.Name, testCompName), testCompName, cr)
+
+	assert.Equal(t, annotations, svc.Annotations)
+}
+
+func TestBuildService_ServiceAnnotations_Default(t *testing.T) {
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+
+	svc := buildService(generateAgentResourceName(cr.Name, testCompName), testCompName, cr)
+
+	assert.Empty(t, svc.Annotations)
+}
+
+func TestBuildService_ServiceAnnotations_NoServer(t *testing.T) {
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+	cr.Spec.ArgoCDAgent.Principal.Server = nil
+
+	svc := buildService(generateAgentResourceName(cr.Name, testCompName), testCompName, cr)
+
+	assert.Empty(t, svc.Annotations)
+}
+
+func TestReconcilePrincipalService_ServiceAnnotations_Set(t *testing.T) {
+	annotations := map[string]string{
+		"metallb.universe.tf/address-pool": "address-pool",
+	}
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(annotations))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.Equal(t, annotations, svc.Annotations)
+}
+
+func TestReconcilePrincipalService_ServiceAnnotations_Default(t *testing.T) {
+	cr := makeTestArgoCD(withPrincipalEnabled(true))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.Empty(t, svc.Annotations)
+}
+
+func TestReconcilePrincipalMetricsService_ServiceAnnotations_Set(t *testing.T) {
+	annotations := map[string]string{
+		"prometheus.io/scrape": "true",
+	}
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(annotations))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalMetricsService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName+"-metrics"),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.Equal(t, annotations, svc.Annotations)
+}
+
+func TestReconcilePrincipalRedisProxyService_ServiceAnnotations_Set(t *testing.T) {
+	annotations := map[string]string{
+		"custom.annotation/key": "value",
+	}
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(annotations))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalRedisProxyService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      argoutil.GenerateAgentPrincipalRedisProxyServiceName(cr.Name),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.Equal(t, annotations, svc.Annotations)
+}
+
 func TestReconcilePrincipalService_ServiceType_ClusterIP(t *testing.T) {
 	// Test case: Service type is explicitly set to ClusterIP
 	// Expected behavior: Should create service with ClusterIP type
