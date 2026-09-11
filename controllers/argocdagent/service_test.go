@@ -1464,7 +1464,79 @@ func TestReconcilePrincipalService_ServiceAnnotations_Set(t *testing.T) {
 		Namespace: testNamespace,
 	}, svc)
 	assert.NoError(t, err)
-	assert.Equal(t, annotations, svc.Annotations)
+	assert.Equal(t, "address-pool", svc.Annotations["metallb.universe.tf/address-pool"])
+	assert.Equal(t, "metallb.universe.tf/address-pool", svc.Annotations[common.AnnotationOwnedPrincipalServiceAnnotations])
+}
+
+func TestReconcilePrincipalService_ServiceAnnotations_RemoveOneOfMany(t *testing.T) {
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(map[string]string{
+		"a.example.io/key": "1",
+		"b.example.io/key": "2",
+		"c.example.io/key": "3",
+	}))
+
+	resObjs := []client.Object{cr}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	err := ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	cr.Spec.ArgoCDAgent.Principal.Server.Service.Annotations = map[string]string{
+		"a.example.io/key": "1",
+		"b.example.io/key": "2",
+	}
+	err = ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.Equal(t, "1", svc.Annotations["a.example.io/key"])
+	assert.Equal(t, "2", svc.Annotations["b.example.io/key"])
+	assert.NotContains(t, svc.Annotations, "c.example.io/key")
+	assert.Equal(t, "a.example.io/key,b.example.io/key", svc.Annotations[common.AnnotationOwnedPrincipalServiceAnnotations])
+}
+
+func TestReconcilePrincipalService_ServiceAnnotations_PreserveThirdPartyOnClear(t *testing.T) {
+	cr := makeTestArgoCD(withPrincipalEnabled(true), withServiceAnnotations(map[string]string{
+		"a.example.io/key": "1",
+	}))
+
+	existingSvc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      generateAgentResourceName(cr.Name, testCompName),
+			Namespace: testNamespace,
+			Labels:    buildLabelsForAgentPrincipal(cr.Name, testCompName),
+			Annotations: map[string]string{
+				"a.example.io/key":                                "1",
+				"external.example.io/key":                         "keep-me",
+				common.AnnotationOwnedPrincipalServiceAnnotations: "a.example.io/key",
+			},
+		},
+		Spec: buildPrincipalServiceSpec(testCompName, cr),
+	}
+
+	resObjs := []client.Object{cr, existingSvc}
+	sch := makeTestReconcilerScheme()
+	cl := makeTestReconcilerClient(sch, resObjs)
+
+	cr.Spec.ArgoCDAgent.Principal.Server.Service.Annotations = nil
+	err := ReconcilePrincipalService(cl, testCompName, cr, sch)
+	assert.NoError(t, err)
+
+	svc := &corev1.Service{}
+	err = cl.Get(context.TODO(), types.NamespacedName{
+		Name:      generateAgentResourceName(cr.Name, testCompName),
+		Namespace: testNamespace,
+	}, svc)
+	assert.NoError(t, err)
+	assert.NotContains(t, svc.Annotations, "a.example.io/key")
+	assert.Equal(t, "keep-me", svc.Annotations["external.example.io/key"])
+	assert.NotContains(t, svc.Annotations, common.AnnotationOwnedPrincipalServiceAnnotations)
 }
 
 func TestReconcilePrincipalService_ServiceAnnotations_Default(t *testing.T) {
