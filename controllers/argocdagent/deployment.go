@@ -100,7 +100,7 @@ func buildDeployment(compName string, cr *argoproj.ArgoCD) *appsv1.Deployment {
 
 func buildPrincipalSpec(compName, saName string, cr *argoproj.ArgoCD, centralTLSProfile tlsProfile.TLSConfigProfile) appsv1.DeploymentSpec {
 	redisAuthVolume, redisAuthMount := argoutil.MountRedisAuthToArgo(cr)
-	envParams := buildPrincipalContainerEnv(cr, compName, centralTLSProfile)
+	envParams := buildPrincipalContainerEnv(cr, centralTLSProfile)
 	return appsv1.DeploymentSpec{
 		Selector: buildSelector(compName, cr),
 		Template: corev1.PodTemplateSpec{
@@ -279,7 +279,7 @@ func updateDeploymentIfChanged(compName, saName string, cr *argoproj.ArgoCD, dep
 		changed = true
 		deployment.Spec.Template.Spec.Containers[0].Name = generateAgentResourceName(cr.Name, compName)
 	}
-	envParams := buildPrincipalContainerEnv(cr, compName, centralTLSProfile)
+	envParams := buildPrincipalContainerEnv(cr, centralTLSProfile)
 	if !reflect.DeepEqual(deployment.Spec.Template.Spec.Containers[0].Env, envParams) {
 		log.Info("deployment container env is being updated")
 		changed = true
@@ -341,7 +341,7 @@ func updateDeploymentIfChanged(compName, saName string, cr *argoproj.ArgoCD, dep
 	return deployment, changed
 }
 
-func buildPrincipalContainerEnv(cr *argoproj.ArgoCD, compName string, centralTLSProfile tlsProfile.TLSConfigProfile) []corev1.EnvVar {
+func buildPrincipalContainerEnv(cr *argoproj.ArgoCD, centralTLSProfile tlsProfile.TLSConfigProfile) []corev1.EnvVar {
 	arguments := getPrincipalTlsConfig(centralTLSProfile)
 	env := []corev1.EnvVar{
 		{
@@ -424,7 +424,7 @@ func buildPrincipalContainerEnv(cr *argoproj.ArgoCD, compName string, centralTLS
 			Value: getPrincipalSelfRegistrationClientCertSecret(cr),
 		}, {
 			Name:  EnvArgoCDPrincipalResourceProxyAddress,
-			Value: getPrincipalResourceProxyAddress(cr, compName),
+			Value: getPrincipalResourceProxyAddress(cr),
 		},
 	}
 
@@ -719,8 +719,8 @@ func getPrincipalSelfRegistrationClientCertSecret(cr *argoproj.ArgoCD) string {
 	return ""
 }
 
-func getPrincipalResourceProxyAddress(cr *argoproj.ArgoCD, compName string) string {
+func getPrincipalResourceProxyAddress(cr *argoproj.ArgoCD) string {
 	return fmt.Sprintf("%s:%d",
-		generateAgentResourceName(cr.Name, compName+"-resource-proxy"),
+		generateAgentResourceName(cr.Name, string(argoproj.AgentComponentTypePrincipal)+"-resource-proxy"),
 		PrincipalResourceProxyServicePort)
 }

@@ -143,7 +143,7 @@ func TestReconcilePrincipalDeployment_DeploymentDoesNotExist_PrincipalEnabled(t 
 	assert.Equal(t, generateAgentResourceName(cr.Name, testCompName), container.Name)
 	assert.Equal(t, buildPrincipalImage(cr), container.Image)
 	assert.Equal(t, buildArgs(testCompName), container.Args)
-	assert.Equal(t, buildPrincipalContainerEnv(cr, testCompName, tlsprofile.TLSConfigProfile{}), container.Env)
+	assert.Equal(t, buildPrincipalContainerEnv(cr, tlsprofile.TLSConfigProfile{}), container.Env)
 	assert.Equal(t, buildSecurityContext(), container.SecurityContext)
 	assert.Equal(t, buildPorts(testCompName), container.Ports)
 
@@ -852,7 +852,7 @@ func TestBuildPrincipalContainerEnv_LabelSelector(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envVars := buildPrincipalContainerEnv(tt.cr, testCompName, tlsprofile.TLSConfigProfile{})
+			envVars := buildPrincipalContainerEnv(tt.cr, tlsprofile.TLSConfigProfile{})
 			envMap := make(map[string]string)
 			for _, e := range envVars {
 				envMap[e.Name] = e.Value
@@ -974,7 +974,7 @@ func TestBuildPrincipalContainerEnv_SelfRegistration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			envVars := buildPrincipalContainerEnv(tt.cr, testCompName, tlsprofile.TLSConfigProfile{})
+			envVars := buildPrincipalContainerEnv(tt.cr, tlsprofile.TLSConfigProfile{})
 			envMap := make(map[string]string)
 			for _, e := range envVars {
 				envMap[e.Name] = e.Value
